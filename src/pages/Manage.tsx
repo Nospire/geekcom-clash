@@ -6,7 +6,7 @@ import { t } from 'i18next';
 import { backend } from "../backend";
 import { L } from "../i18n";
 import { addEventListener, removeEventListener, toaster } from "@decky/api";
-import { CallbackRef, SubscriptionField } from "../components";
+import { CallbackRef, FullWidthFieldScope, SubscriptionField } from "../components";
 import { DeleteConfirmModal, EditSubscriptionModal } from "../modals";
 
 export interface ManageProp {
@@ -118,37 +118,39 @@ export const Manage: FC<ManageProp> = (props) => {
 
   return (
     <DialogBody>
-      <Field label={t(L.SUBSCRIPTION_LIST)}>
-        { /* @ts-expect-error */
-          <Focusable style={{
-            display: 'flex',
-            flexWrap: 'nowrap',
-            columnGap: '10px',
-          }}>
-            <DialogButton
-              disabled={Object.entries(subscriptions).length == 0}
-              onClick={updateSubs}
-            >
-              {t(L.UPDATE_ALL)}
-            </DialogButton>
-            <DialogButton
-              disabled={Object.entries(subscriptions).length == 0}
-              onClick={() => setEditMode(!editMode)}
-            >
-              {editMode ? t(L.QUICK_EDIT_EXIT) : t(L.QUICK_EDIT)}
-            </DialogButton>
-          </Focusable>}
-      </Field>
-      <ToggleField
-        label={t(L.AUTO_UPDATE_SUBSCRIPTION)}
-        checked={autoUpdateSubscription}
-        onChange={(x) => {
-          setAutoUpdateSubscription(x);
-          backend.setConfigValue("auto_update_subscription", x).then(() =>
-            backend.getConfigValue("auto_update_subscription").then(setAutoUpdateSubscription));
-          localStorage.setItem("decky-clash-auto-update-subscription", x.toString());
-        }}
-      />
+      <FullWidthFieldScope>
+        <Field label={t(L.SUBSCRIPTION_LIST)}>
+          { /* @ts-expect-error */
+            <Focusable style={{
+              display: 'flex',
+              flexWrap: 'nowrap',
+              columnGap: '10px',
+            }}>
+              <DialogButton
+                disabled={Object.entries(subscriptions).length == 0}
+                onClick={updateSubs}
+              >
+                {t(L.UPDATE_ALL)}
+              </DialogButton>
+              <DialogButton
+                disabled={Object.entries(subscriptions).length == 0}
+                onClick={() => setEditMode(!editMode)}
+              >
+                {editMode ? t(L.QUICK_EDIT_EXIT) : t(L.QUICK_EDIT)}
+              </DialogButton>
+            </Focusable>}
+        </Field>
+        <ToggleField
+          label={t(L.AUTO_UPDATE_SUBSCRIPTION)}
+          checked={autoUpdateSubscription}
+          onChange={(x) => {
+            setAutoUpdateSubscription(x);
+            backend.setConfigValue("auto_update_subscription", x).then(() =>
+              backend.getConfigValue("auto_update_subscription").then(setAutoUpdateSubscription));
+            localStorage.setItem("decky-clash-auto-update-subscription", x.toString());
+          }}
+        />
+      </FullWidthFieldScope>
       <style>
         {`
 @keyframes dc_spin {

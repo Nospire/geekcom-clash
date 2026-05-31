@@ -104,6 +104,7 @@
     "RULE": "规则",
     "GLOBAL": "全局",
     "DIRECT": "直连",
-    "TRAFFIC": "流量",
+    "UPLOAD": "上传",
+    "DOWNLOAD": "下载",
     "MEMORY": "内存"
 }

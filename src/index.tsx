@@ -37,7 +37,7 @@ import {
   streamMemory,
   streamTraffic,
 } from "./backend/core";
-import { ActionButtonItem, IconButton, InstallationGuide, RowField } from "./components";
+import { ActionButtonItem, FullWidthFieldScope, IconButton, InstallationGuide, RowField } from "./components";
 import { localizationManager, L } from "./i18n";
 import { DeckyClashIcon, TIPS_TIMEOUT } from "./global";
 import { FaExternalLinkAlt, FaPencilAlt } from "react-icons/fa";
@@ -199,7 +199,7 @@ const Content: FC<{}> = ({ }) => {
       scaled /= 1024;
       index++;
     }
-    return `${scaled.toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
+    return `${scaled.toFixed(index === 0 || scaled >= 100 ? 0 : 1)} ${units[index]}`;
   };
 
   const fetchAllConfig = async () => {
@@ -361,7 +361,7 @@ const Content: FC<{}> = ({ }) => {
       quitCallback={() => setInstallGuide(false)}
     />
     :
-    <>
+    <FullWidthFieldScope>
       <PanelSection title={t(L.SERVICE)}>
         <PanelSectionRow>
           <ToggleField
@@ -458,20 +458,21 @@ const Content: FC<{}> = ({ }) => {
             </RowField>
           </PanelSectionRow>
           <PanelSectionRow>
-            <Field
-              label={t(L.TRAFFIC)}
-            >
+            <Field label={t(L.UPLOAD)}>
               <div style={{ textAlign: "right" }}>
-                {"↑ " + (traffic ? `${formatBytes(traffic.up)}/s (${formatBytes(traffic.upTotal)})` : t(L.LOADING))}
-                <br/>
-                {"↓ " + (traffic ? `${formatBytes(traffic.down)}/s (${formatBytes(traffic.downTotal)})` : t(L.LOADING))}
+                {traffic ? `${formatBytes(traffic.up)}/s (${formatBytes(traffic.upTotal)})` : t(L.LOADING)}
               </div>
             </Field>
           </PanelSectionRow>
           <PanelSectionRow>
-            <Field
-              label={t(L.MEMORY)}
-            >
+            <Field label={t(L.DOWNLOAD)}>
+              <div style={{ textAlign: "right" }}>
+                {traffic ? `${formatBytes(traffic.down)}/s (${formatBytes(traffic.downTotal)})` : t(L.LOADING)}
+              </div>
+            </Field>
+          </PanelSectionRow>
+          <PanelSectionRow>
+            <Field label={t(L.MEMORY)}>
               {memory ?
                 `${formatBytes(memory.inuse)}${memory.oslimit ? ` / ${formatBytes(memory.oslimit)}` : ''}` :
                 t(L.LOADING)}
@@ -622,18 +623,12 @@ const Content: FC<{}> = ({ }) => {
       </PanelSection>
       <PanelSection title={t(L.VERSION)}>
         <PanelSectionRow>
-          <Field
-            focusable
-            label={t(L.PLUGIN)}
-          >
+          <Field label={t(L.PLUGIN)}>
             {pluginVersion}
           </Field>
         </PanelSectionRow>
         <PanelSectionRow>
-          <Field
-            focusable
-            label="Mihomo"
-          >
+          <Field label="Mihomo">
             {coreVersion}
           </Field>
         </PanelSectionRow>
@@ -660,7 +655,7 @@ const Content: FC<{}> = ({ }) => {
           </ButtonItem>
         </PanelSectionRow>
       </PanelSection>
-    </>
+    </FullWidthFieldScope>
   );
 };
 

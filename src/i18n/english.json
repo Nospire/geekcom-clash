@@ -103,6 +103,7 @@
     "RULE": "Rule",
     "GLOBAL": "Global",
     "DIRECT": "Direct",
-    "TRAFFIC": "Traffic",
+    "UPLOAD": "Upload",
+    "DOWNLOAD": "Download",
     "MEMORY": "Memory"
 }
