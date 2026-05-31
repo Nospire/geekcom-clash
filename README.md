@@ -35,7 +35,7 @@
 
 ## License
 
-This project is licensed by **BSD 3-Clause License** .
+This project is licensed by **BSD 3-Clause License**. See more details in [LICENSE](./LICENSE).
 
 ## Install
 
@@ -66,17 +66,17 @@ curl -L https://ba.sh/HMtV | bash -s -- -h
 > [!NOTE]
 > This offline installer includes all necessary third-party resources. However, it may not be up-to-date as the online installer.
 
-1. Go to [Latest Release](https://github.com/chenx-dust/DeckyClash/releases/latest) and download `Installer-DeckyClash.sh`
+1. Go to [Latest Release](https://github.com/chenx-dust/DeckyClash/releases/latest) and download `Installer-DeckyClash.sh` .
 
 2. Use any method to send the installer to your target device, e.g. USB, SCP, etc.
 
-3. Grant executable permission to the installer
+3. Grant executable permission to the installer.
 
    ```sh
    chmod +x Installer-DeckyClash.sh
    ```
 
-4. Run the installer and follow the instructions
+4. Run the installer and follow the instructions.
 
    ```sh
    ./Installer-DeckyClash.sh
@@ -88,18 +88,18 @@ Plugin will automatically check for updates every time you enter the Steam inter
 
 ### Built-in upgrade
 
-1. Enter the Quick Access Menu and select **Decky Clash**
-2. Find the **Version** column and click the **Manage Upgrades** button
-3. The program will automatically check for updates, and the **Latest Version** row will display
-4. If **Latest Version** and **Installed Version** are different, an upgrade button will be shown, click to start
+1. Enter the Quick Access Menu and select **Decky Clash**.
+2. Find the **Version** column and click the **Manage Upgrades** button.
+3. The program will automatically check for updates, and the **Latest Version** row will display.
+4. If **Latest Version** and **Installed Version** are different, an upgrade button will be shown, click to start.
 
 ### Full upgrade
 
-(Same as the installation step)
+(Same as the [installation](#install) step)
 
 ### Upgrade Third-Party Resources
 
-Execute the following command:
+Use built-in upgrade or execute the following command:
 
 ```sh
 curl -L https://ba.sh/HMtV | bash -s -- --without-plugin --without-restart --yes
