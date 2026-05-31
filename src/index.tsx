@@ -732,7 +732,7 @@ export default definePlugin(() => {
     // The name shown in various decky menus
     name: "Decky Clash",
     // The element displayed at the top of your plugin's menu
-    titleView: <div className={staticClasses.Title}>Decky Clash</div>,
+    title: <div className={staticClasses.Title}>Decky Clash</div>,
     // The content of your plugin's menu
     content: <Content />,
     // The icon displayed in the plugin list
