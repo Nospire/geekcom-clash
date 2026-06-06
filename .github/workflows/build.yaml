@@ -53,19 +53,33 @@ jobs:
           pnpm install --no-frozen-lockfile
           pnpm build
 
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+
+      - name: Build desktop TUI
+        run: |
+          cd tui/geekcom-clash-tui
+          GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o geekcom-clash-tui .
+
       - name: Collect files
         run: |
           mkdir -p release/GeekcomClash
           cp -R defaults/* dist py_modules release/GeekcomClash/
           rm -rf release/GeekcomClash/defaults/external/.git
           cp main.py plugin.json package.json LICENSE release/GeekcomClash/
-          cd release 
+          mkdir -p release/GeekcomClash/desktop
+          cp tui/geekcom-clash-ctl tui/decky_shim.py tui/49-geekcom-clash.rules assets/logo.png release/GeekcomClash/desktop/
+          cp tui/geekcom-clash-tui/geekcom-clash-tui release/GeekcomClash/desktop/
+          chmod +x release/GeekcomClash/desktop/geekcom-clash-ctl release/GeekcomClash/desktop/geekcom-clash-tui
+          cd release
           zip -r GeekcomClash.zip GeekcomClash
           cd ..
 
       - name: Packing offine installer
         run: |
-          OVERRIDE_PLUGIN_DIR="release/GeekcomClash" OVERRIDE_DATA_DIR="release/GeekcomClash/data" ./install.sh --yes --no-privilege --without-plugin --without-restart
+          OVERRIDE_PLUGIN_DIR="release/GeekcomClash" OVERRIDE_DATA_DIR="release/GeekcomClash/data" ./install.sh --yes --no-privilege --without-plugin --without-restart --without-desktop
           cp install-offline.sh release/Installer-GeekcomClash.sh
           cd release
           zip -r GeekcomClash-full.zip GeekcomClash

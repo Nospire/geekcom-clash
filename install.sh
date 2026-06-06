@@ -32,6 +32,7 @@ function usage() {
   echo "      --without-binary        Skip installing Mihomo"
   echo "      --without-geo           Skip installing geo files"
   echo "      --without-dashboard     Skip installing dashboards"
+  echo "      --without-desktop       Skip installing the desktop app (TUI/launcher)"
   echo "      --without-restart       Skip restarting Decky Loader"
   echo "      --clean                 Remove all plugin files (includes config) before installing"
   echo "      --clean-uninstall       Uninstall and remove all plugin files (includes config)"
@@ -120,6 +121,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --without-dashboard)
       WITHOUT_DASHBOARD=true
+      shift
+      ;;
+    --without-desktop)
+      WITHOUT_DESKTOP=true
       shift
       ;;
     --without-restart)
@@ -294,6 +299,63 @@ if prompt_continue $WITHOUT_DASHBOARD; then
 	unzip -oq "${DL_DEST}" -d "${TEMP_DIR}"
   $SUDO rm -rf "${INSTALL_DEST}"
 	$SUDO mv "${TEMP_DIR}/dist" "${INSTALL_DEST}"
+fi
+
+echo "Installing Desktop App ..."
+if prompt_continue $WITHOUT_DESKTOP; then
+  SRC="${PLUGIN_DIR}/desktop"
+  APP_DIR="${HOME}/.local/share/geekcom-clash"
+  BIN_MIHOMO="${PLUGIN_DIR}/bin/mihomo"
+  RUN_USER=$(id -un)
+  if [ ! -d "$SRC" ]; then
+    echo "  (desktop files not in this build, skipping)"
+  else
+    mkdir -p "$APP_DIR" "${HOME}/.local/share/applications" "${HOME}/Desktop"
+    cp "$SRC/geekcom-clash-tui" "$SRC/geekcom-clash-ctl" "$SRC/decky_shim.py" "$SRC/logo.png" "$APP_DIR/"
+    chmod +x "$APP_DIR/geekcom-clash-tui" "$APP_DIR/geekcom-clash-ctl"
+
+    # ярлык (Konsole)
+    cat > "${HOME}/.local/share/applications/geekcom-clash.desktop" <<EOF
+[Desktop Entry]
+Type=Application
+Name=Geekcom Clash
+GenericName=VPN
+Comment=Geekcom Clash VPN
+Icon=${APP_DIR}/logo.png
+Exec=konsole --hide-menubar -p TerminalColumns=82 -p TerminalRows=34 -e ${APP_DIR}/geekcom-clash-tui
+Terminal=false
+Categories=Network;System;
+EOF
+    cp "${HOME}/.local/share/applications/geekcom-clash.desktop" "${HOME}/Desktop/geekcom-clash.desktop"
+    chmod +x "${HOME}/Desktop/geekcom-clash.desktop"
+
+    # systemd --user юнит (пути проставляет ctl)
+    "$APP_DIR/geekcom-clash-ctl" install-unit || true
+
+    # setcap: TUN без постоянного root + sudoers-самохил после апдейта mihomo
+    SETCAP=$(command -v setcap)
+    if [ -n "$SETCAP" ]; then
+      $SUDO "$SETCAP" 'cap_net_admin,cap_net_raw=+ep' "$BIN_MIHOMO" || true
+      cat > "$APP_DIR/geekcom-setcap" <<EOF
+#!/usr/bin/bash
+exec "$SETCAP" 'cap_net_admin,cap_net_raw=+ep' "$BIN_MIHOMO"
+EOF
+      chmod +x "$APP_DIR/geekcom-setcap"
+      TMP_SUDO="${TEMP_DIR}/geekcom-clash.sudoers"
+      echo "${RUN_USER} ALL=(root) NOPASSWD: ${APP_DIR}/geekcom-setcap" > "$TMP_SUDO"
+      if $SUDO visudo -cf "$TMP_SUDO" >/dev/null 2>&1; then
+        $SUDO install -m 0440 -o root -g root "$TMP_SUDO" /etc/sudoers.d/geekcom-clash
+      fi
+    fi
+
+    # polkit: без окна пароля для resolved (DNS туннеля)
+    $SUDO install -m 0644 "$SRC/49-geekcom-clash.rules" /etc/polkit-1/rules.d/49-geekcom-clash.rules || true
+
+    # права: desktop-ctl (юзер) должен писать настройки/конфиг плагина
+    $SUDO chown -R "${RUN_USER}:${RUN_USER}" "${BASE_DIR}/settings/${PACKAGE}" "${DATA_DIR}" 2>/dev/null || true
+
+    echo "  Готово: ярлык «Geekcom Clash» на рабочем столе и в меню приложений."
+  fi
 fi
 
 echo "Installation complete."

@@ -140,7 +140,22 @@ def unit_active() -> bool:
     return r.stdout.strip() == "active"
 
 
+def ensure_caps():
+    """Если cap слетели (апдейт mihomo заменил бинарь) — вернуть через враппер
+    с NOPASSWD-sudo (ставится установщиком). Молча, без блокировки."""
+    try:
+        out = subprocess.run(["getcap", CORE_BIN], capture_output=True, text=True).stdout
+    except FileNotFoundError:
+        return
+    if "cap_net_admin" in out:
+        return
+    wrapper = os.path.expanduser("~/.local/share/geekcom-clash/geekcom-setcap")
+    if os.path.exists(wrapper):
+        subprocess.run(["sudo", "-n", wrapper], check=False)
+
+
 def cmd_start(settings):
+    ensure_caps()
     regen(settings)
     _systemctl("start", UNIT_NAME)
 
