@@ -96,6 +96,8 @@ func (m model) View() string {
 		m.renderAddSub(b)
 	case "subpick":
 		m.renderSubPick(b)
+	case "dashpick":
+		m.renderDashPick(b)
 	default:
 		m.renderMain(b)
 	}
@@ -219,9 +221,15 @@ func (m model) renderMain(b *builder) {
 		b.blank()
 	}
 
-	// действия
+	// веб-панель: выбор + открытие
+	dashName := m.info.Dashboard
+	if dashName == "" {
+		dashName = "выбрать"
+	}
+	b.line(base.Render(" Веб-панель"))
 	b.buttonsRow(2, []btnSpec{
-		{label: "🌐 Веб-панель", id: "webpanel"},
+		{label: dashName + " ▾", id: "dashpick"},
+		{label: "🌐 Открыть", id: "webpanel"},
 		{label: "📜 Логи", id: "logs"},
 	})
 	b.blank()
@@ -252,6 +260,21 @@ func (m model) renderSubPick(b *builder) {
 	b.blank()
 	b.buttonsRow(2, []btnSpec{{label: "Отмена", id: "cancel"}})
 	_ = t
+}
+
+func (m model) renderDashPick(b *builder) {
+	t := m.th
+	b.line(b.base.Render(" Выбери веб-панель:"))
+	b.blank()
+	if len(m.dashes) == 0 {
+		b.line(lipgloss.NewStyle().Background(t.Bg).Foreground(t.Muted).
+			Render(" нет установленных панелей (поставь через установщик)"))
+	}
+	for _, d := range m.dashes {
+		b.buttonsRow(2, []btnSpec{{label: d, id: "dashsel", data: d, active: d == m.info.Dashboard}})
+	}
+	b.blank()
+	b.buttonsRow(2, []btnSpec{{label: "Отмена", id: "cancel"}})
 }
 
 func (m model) renderAddSub(b *builder) {

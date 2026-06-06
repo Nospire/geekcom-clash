@@ -76,6 +76,31 @@ func ctlListSubs() (SubList, error) {
 	return s, json.Unmarshal([]byte(out), &s)
 }
 
+func ctlListDashboards() []string {
+	out, err := runCtl("list-dashboards")
+	if err != nil {
+		return nil
+	}
+	var d []string
+	json.Unmarshal([]byte(out), &d)
+	return d
+}
+
+// dashURL — полный URL дашборда с hostname/port/secret, чтобы он сразу
+// подключился к контроллеру (без формы логина).
+func dashURL(i Info, name string) string {
+	port := i.ControllerPort
+	if name == "" {
+		return fmt.Sprintf("http://127.0.0.1:%d/ui/", port)
+	}
+	path := "#/setup"
+	if name == "yacd" {
+		path = ""
+	}
+	return fmt.Sprintf("http://127.0.0.1:%d/ui/%s/%s?hostname=127.0.0.1&port=%d&secret=%s",
+		port, name, path, port, i.Secret)
+}
+
 // --- mihomo REST API -------------------------------------------------------
 
 type apiClient struct {

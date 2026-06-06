@@ -243,6 +243,16 @@ def cmd_status(settings):
     print("active" if unit_active() else "inactive")
 
 
+def cmd_list_dashboards(_settings):
+    print(json.dumps(plugin_dashboard.get_dashboard_list(), ensure_ascii=False))
+
+
+def cmd_set_dashboard(settings, name):
+    settings["dashboard"] = name
+    save_settings(settings)
+    print(f"Панель: {name}")
+
+
 def cmd_regen(settings):
     print(regen(settings))
 
@@ -251,8 +261,9 @@ def main():
     ap = argparse.ArgumentParser(prog="geekcom-clash-ctl")
     sub = ap.add_subparsers(dest="cmd", required=True)
     for name in ("info", "status", "regen", "start", "stop", "restart",
-                 "list-subs", "install-unit", "setcap"):
+                 "list-subs", "list-dashboards", "install-unit", "setcap"):
         sub.add_parser(name)
+    p = sub.add_parser("set-dashboard"); p.add_argument("name")
     p = sub.add_parser("set-sub"); p.add_argument("name")
     p = sub.add_parser("update-sub"); p.add_argument("name")
     p = sub.add_parser("add-sub"); p.add_argument("url")
@@ -262,11 +273,13 @@ def main():
     dispatch = {
         "info": cmd_info, "status": cmd_status, "regen": cmd_regen,
         "start": cmd_start, "stop": cmd_stop, "restart": cmd_restart,
-        "list-subs": cmd_list_subs, "install-unit": cmd_install_unit,
-        "setcap": cmd_setcap,
+        "list-subs": cmd_list_subs, "list-dashboards": cmd_list_dashboards,
+        "install-unit": cmd_install_unit, "setcap": cmd_setcap,
     }
     if args.cmd in dispatch:
         dispatch[args.cmd](settings)
+    elif args.cmd == "set-dashboard":
+        cmd_set_dashboard(settings, args.name)
     elif args.cmd == "set-sub":
         cmd_set_sub(settings, args.name)
     elif args.cmd == "update-sub":

@@ -40,6 +40,7 @@ type model struct {
 	tr       Traffic
 	subs     []string
 	current  string
+	dashes   []string
 	autostrt bool
 	busy     string
 	status   string
@@ -61,6 +62,7 @@ type dataMsg struct {
 	tr      Traffic
 	subs    []string
 	current string
+	dashes  []string
 	auto    bool
 }
 type statusMsg string
@@ -88,6 +90,7 @@ func refreshCmd(i Info) tea.Cmd {
 			}
 		}
 		d.auto = autostartEnabled()
+		d.dashes = ctlListDashboards()
 		if i.Active && i.ControllerUp {
 			api := newAPI(i)
 			d.mode = api.mode()
@@ -158,6 +161,13 @@ func pingCmd(i Info, group string) tea.Cmd {
 	return func() tea.Msg {
 		newAPI(i).groupDelay(group)
 		return statusMsg("Пинг обновлён")
+	}
+}
+
+func setDashboardCmd(name string) tea.Cmd {
+	return func() tea.Msg {
+		runCtl("set-dashboard", name)
+		return statusMsg("Панель: " + name)
 	}
 }
 
@@ -237,6 +247,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.tr = msg.tr
 		m.subs = msg.subs
 		m.current = msg.current
+		m.dashes = msg.dashes
 		m.autostrt = msg.auto
 		return m, nil
 
@@ -340,15 +351,22 @@ func (m model) activate(z zone) (tea.Model, tea.Cmd) {
 		m.status = "Пингую..."
 		return m, pingCmd(m.info, m.group)
 	case "webpanel":
-		port := m.info.ControllerPort
-		dash := m.info.Dashboard
-		url := fmt.Sprintf("http://127.0.0.1:%d/ui/", port)
-		if dash != "" {
-			url = fmt.Sprintf("http://127.0.0.1:%d/ui/%s/?hostname=127.0.0.1&port=%d&secret=%s", port, dash, port, m.info.Secret)
+		// нет выбранной панели — открываем выбор, иначе сразу панель
+		if m.info.Dashboard == "" {
+			m.screen = "dashpick"
+			return m, nil
 		}
-		openURL(url)
-		m.status = "Открываю веб-панель"
+		openURL(dashURL(m.info, m.info.Dashboard))
+		m.status = "Открываю: " + m.info.Dashboard
 		return m, nil
+	case "dashpick":
+		m.screen = "dashpick"
+		return m, nil
+	case "dashsel":
+		m.screen = "main"
+		m.info.Dashboard = z.data
+		openURL(dashURL(m.info, z.data))
+		return m, setDashboardCmd(z.data)
 	case "logs":
 		openLogs()
 		m.status = "Логи в Konsole"
