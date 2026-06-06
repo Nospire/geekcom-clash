@@ -3,6 +3,7 @@ import { DialogBody, DialogControlsSection, DialogControlsSectionHeader, Dropdow
 import { t } from 'i18next';
 import { L } from "../i18n";
 import { backend, ResourceType } from "../backend";
+import { BRAND } from "../branding";
 import { UpgradeItem } from "../components/UpgradeItem";
 import { toaster } from "@decky/api";
 import { BsCheckCircleFill, BsExclamationCircleFill } from "react-icons/bs";
@@ -69,7 +70,7 @@ export const Upgrade: FC = () => {
 
   const upgradePlugin = upgradeCallback(
     () => backend.upgrade(ResourceType.PLUGIN, channel === "nightly" ? "nightly" : pluginLatest),
-    "DeckyClash", pluginLatest
+    BRAND.name, pluginLatest
   );
   const upgradeCore = upgradeCallback(() => backend.upgrade(ResourceType.CORE, coreLatest), "Mihomo", coreLatest);
   const upgradeGeos = upgradeCallback(() => backend.installGeos(), t(L.INSTALLATION_GEO), "");

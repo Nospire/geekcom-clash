@@ -94,6 +94,7 @@ const Content: FC<{}> = ({ }) => {
   const [enhancedMode, setEnhancedMode] = useState<EnhancedMode>(localConfig.enhanced_mode);
   const [autostart, setAutostart] = useState(localConfig.autostart);
   const [skipSteamDownload, setSkipSteamDownload] = useState(localConfig.skip_steam_download);
+  const [language, setLanguageState] = useState<string>(localizationManager.getStored());
   const [currentDashboard, setCurrentDashboard] = useState<string | null>(localConfig.dashboard);
   const [dashboardOptions, setDashboardOption] = useState<DropdownOption[]>(parseDashboardOptions(localDashboards));
   const [allowRemoteAccess, setAllowRemoteAccess] = useState(localConfig.allow_remote_access);
@@ -304,6 +305,11 @@ const Content: FC<{}> = ({ }) => {
     return;
   }, [clashState, clashStateTips, currentSub]);
 
+  const languageOptions: DropdownOption[] = [
+    { label: t(L.LANGUAGE_AUTO), data: "auto" },
+    ...localizationManager.getLanguageOptions().map((o) => ({ label: o.label, data: o.key })),
+  ];
+
   const enhancedModeOptions = [
     { mode: EnhancedMode.RedirHost, label: "Redir Host" },
     { mode: EnhancedMode.FakeIp, label: "Fake IP" },
@@ -508,6 +514,17 @@ const Content: FC<{}> = ({ }) => {
         </PanelSection>
       )}
       <PanelSection title={t(L.SETTINGS)}>
+        <PanelSectionRow>
+          <DropdownItem
+            label={t(L.LANGUAGE)}
+            rgOptions={languageOptions}
+            selectedOption={language}
+            onChange={async (v) => {
+              await localizationManager.setLanguage(v.data);
+              setLanguageState(v.data);
+            }}
+          />
+        </PanelSectionRow>
         <PanelSectionRow>
           <ToggleField
             label={t(L.AUTOSTART)}

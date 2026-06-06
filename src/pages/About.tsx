@@ -25,7 +25,7 @@ export const About: FC = () => {
     <DialogBody>
       <DialogControlsSection>
         <DescriptionField label={BRAND.name}>
-          Light-weight Clash/Mihomo proxy client for Steam OS.
+          {t(L.ABOUT_TAGLINE)}
         </DescriptionField>
         <Field
           label={t(L.INSTALLED_VERSION)} focusable >
@@ -38,7 +38,7 @@ export const About: FC = () => {
             Navigation.NavigateToExternalWeb(BRAND.links.github);
           }}
         >
-          GitHub Repo
+          {t(L.GITHUB_REPO)}
         </Field>
       </DialogControlsSection>
       <DialogControlsSection>
@@ -87,9 +87,9 @@ export const About: FC = () => {
           {t(L.DEPENDENCY)}
         </DialogControlsSectionHeader>
         <DescriptionField label="Mihomo">
-          Another Mihomo Kernel.
+          {t(L.MIHOMO_KERNEL)}
           <br />
-          <i>{BRAND.name} is powered by Mihomo.</i>
+          <i>{t(L.POWERED_BY_MIHOMO)}</i>
         </DescriptionField>
         <Field
           label={t(L.INSTALLED_VERSION)}
@@ -106,7 +106,7 @@ export const About: FC = () => {
             );
           }}
         >
-          GitHub Repo
+          {t(L.GITHUB_REPO)}
         </Field>
       </DialogControlsSection>
     </DialogBody>
