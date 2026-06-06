@@ -48,6 +48,9 @@ import dashboard as plugin_dashboard  # noqa: E402
 # subscription тянет core->utils->aiohttp; импортируем лениво только там,
 # где реально нужны сетевые операции (add/update подписки).
 
+# systemctl --user требует XDG_RUNTIME_DIR; в SSH/установщике его может не быть.
+os.environ.setdefault("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")
+
 UNIT_NAME = "geekcom-clash.service"
 CONFIG_JSON = os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "config.json")
 RUNNING_CONFIG = os.path.join(decky.DECKY_PLUGIN_RUNTIME_DIR, "running_config.yaml")
