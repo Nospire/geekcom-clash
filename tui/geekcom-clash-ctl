@@ -1,0 +1,294 @@
+#!/usr/bin/env python3
+"""
+geekcom-clash-ctl — общий слой управления Geekcom Clash с рабочего стола.
+
+Переиспользует код плагина (config.py / subscription.py / dashboard.py) через
+shim модуля `decky`, работает с теми же файлами настроек/подписок, что и плагин
+в игровом режиме, и управляет ядром mihomo через systemd --user юнит.
+
+Используется и Go-TUI (как backend для мутаций), и — после рефактора — самим
+плагином, чтобы был единый источник правды (арх. A).
+
+Подкоманды:
+  info                 — JSON: secret, порт, текущая подписка, dashboard, статус
+  status               — active/inactive (+ ping контроллера)
+  regen                — перегенерировать running_config.yaml из настроек
+  start | stop | restart
+  enable | disable     — автозапуск юнита (linger)
+  list-subs            — список подписок (имя -> url)
+  set-sub <name>       — выбрать подписку (+ regen + restart если запущен)
+  update-sub <name>    — пере-скачать подписку по сохранённому url
+  add-sub <url>        — скачать новую подписку
+  install-unit         — записать systemd --user юнит
+  setcap               — выдать mihomo cap_net_admin (нужен root)
+"""
+import argparse
+import asyncio
+import json
+import os
+import subprocess
+import sys
+import types
+import urllib.request
+
+# --- 1. Поднять shim `decky` ДО импорта кода плагина -------------------------
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_PLUGIN_DIR = os.environ.get("DECKY_PLUGIN_DIR") or os.path.expanduser(
+    "~/homebrew/plugins/GeekcomClash"
+)
+sys.path.insert(0, os.path.join(_PLUGIN_DIR, "py_modules"))
+
+import decky_shim  # noqa: E402  (лежит рядом с ctl)
+
+sys.modules["decky"] = decky_shim  # код плагина увидит наш shim как `decky`
+import decky  # noqa: E402  (теперь это shim)
+
+import config as plugin_config        # noqa: E402
+import dashboard as plugin_dashboard  # noqa: E402
+# subscription тянет core->utils->aiohttp; импортируем лениво только там,
+# где реально нужны сетевые операции (add/update подписки).
+
+UNIT_NAME = "geekcom-clash.service"
+CONFIG_JSON = os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "config.json")
+RUNNING_CONFIG = os.path.join(decky.DECKY_PLUGIN_RUNTIME_DIR, "running_config.yaml")
+CORE_BIN = os.path.join(decky.DECKY_PLUGIN_DIR, "bin", "mihomo")
+
+DEFAULTS = {
+    "current": None,
+    "secret": "",
+    "override_dns": True,
+    "enhanced_mode": "fake-ip",
+    "controller_port": 9090,
+    "allow_remote_access": False,
+    "dashboard": None,
+    "skip_steam_download": False,
+    "autostart": False,
+}
+
+
+# --- 2. Чтение/запись настроек (формат Decky SettingsManager) ----------------
+def load_settings() -> dict:
+    try:
+        with open(CONFIG_JSON) as f:
+            raw = json.load(f)
+    except FileNotFoundError:
+        raw = {}
+    # Decky может хранить как {"settings": {...}} или плоско — поддержим оба.
+    data = raw.get("settings", raw) if isinstance(raw, dict) else {}
+    merged = dict(DEFAULTS)
+    merged.update({k: v for k, v in data.items() if k in DEFAULTS})
+    merged["_raw"] = raw
+    return merged
+
+
+def save_settings(settings: dict) -> None:
+    raw = settings.get("_raw") or {}
+    target = raw["settings"] if isinstance(raw, dict) and "settings" in raw else raw
+    for k in DEFAULTS:
+        if k in settings:
+            target[k] = settings[k]
+    os.makedirs(decky.DECKY_PLUGIN_SETTINGS_DIR, exist_ok=True)
+    with open(CONFIG_JSON, "w") as f:
+        json.dump(raw if raw else {k: settings[k] for k in DEFAULTS}, f, indent=2)
+
+
+# --- 3. Генерация конфига (переиспользует config.py плагина) -----------------
+def regen(settings: dict) -> str:
+    current = settings.get("current")
+    if not current:
+        raise SystemExit("Подписка не выбрана (settings.current пуст)")
+    # путь подписки тот же, что у плагина (subscription.get_path), без импорта модуля
+    ori = os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "subscriptions", current + ".yaml")
+    if not os.path.exists(ori):
+        raise SystemExit(f"Файл подписки не найден: {ori}")
+    os.makedirs(decky.DECKY_PLUGIN_RUNTIME_DIR, exist_ok=True)
+    enhanced = plugin_config.EnhancedMode(settings["enhanced_mode"])
+    asyncio.run(
+        plugin_config.generate_config(
+            ori_path=ori,
+            new_path=RUNNING_CONFIG,
+            secret=settings["secret"],
+            override_dns=settings["override_dns"],
+            enhanced_mode=enhanced,
+            controller_port=settings["controller_port"],
+            allow_remote_access=settings["allow_remote_access"],
+            dashboard_dir=str(plugin_dashboard.DASHBOARD_DIR),
+            dashboard=settings.get("dashboard"),
+            skip_steam_download=settings["skip_steam_download"],
+        )
+    )
+    return RUNNING_CONFIG
+
+
+# --- 4. systemd --user управление -------------------------------------------
+def _systemctl(*args, check=True):
+    try:
+        return subprocess.run(["systemctl", "--user", *args], check=check)
+    except FileNotFoundError:
+        print("warn: systemctl не найден (нет systemd?)", file=sys.stderr)
+        return None
+
+
+def unit_active() -> bool:
+    try:
+        r = subprocess.run(
+            ["systemctl", "--user", "is-active", UNIT_NAME],
+            capture_output=True, text=True,
+        )
+    except FileNotFoundError:
+        return False
+    return r.stdout.strip() == "active"
+
+
+def cmd_start(settings):
+    regen(settings)
+    _systemctl("start", UNIT_NAME)
+
+
+def cmd_stop(_settings):
+    _systemctl("stop", UNIT_NAME)
+
+
+def cmd_restart(settings):
+    regen(settings)
+    _systemctl("restart", UNIT_NAME)
+
+
+# --- 5. Контроллер mihomo (REST API) ----------------------------------------
+def controller_ping(settings) -> bool:
+    port = settings["controller_port"]
+    req = urllib.request.Request(
+        f"http://127.0.0.1:{port}/version",
+        headers={"Authorization": f'Bearer {settings["secret"]}'},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=2) as resp:
+            return resp.status == 200
+    except Exception:
+        return False
+
+
+# --- 6. Подписки ------------------------------------------------------------
+def cmd_list_subs(settings):
+    subs = settings["_raw"].get("settings", settings["_raw"]).get("subscriptions", {}) \
+        if isinstance(settings["_raw"], dict) else {}
+    print(json.dumps({"current": settings.get("current"), "subscriptions": subs},
+                     ensure_ascii=False, indent=2))
+
+
+def cmd_set_sub(settings, name):
+    subs = (settings["_raw"].get("settings", settings["_raw"])
+            if isinstance(settings["_raw"], dict) else {}).get("subscriptions", {})
+    if name not in subs:
+        raise SystemExit(f"Нет такой подписки: {name}")
+    settings["current"] = name
+    save_settings(settings)
+    if unit_active():
+        cmd_restart(settings)
+    print(f"Активная подписка: {name}")
+
+
+# --- 7. systemd unit / setcap инсталляция -----------------------------------
+def unit_text() -> str:
+    ctl_path = os.path.join(_HERE, "geekcom-clash-ctl")
+    return f"""[Unit]
+Description=Geekcom Clash (mihomo) core
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStartPre={ctl_path} regen
+ExecStart={CORE_BIN} -f {RUNNING_CONFIG} -d {decky.DECKY_PLUGIN_RUNTIME_DIR}
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target
+"""
+
+
+def cmd_install_unit(_settings):
+    unit_dir = os.path.expanduser("~/.config/systemd/user")
+    os.makedirs(unit_dir, exist_ok=True)
+    path = os.path.join(unit_dir, UNIT_NAME)
+    with open(path, "w") as f:
+        f.write(unit_text())
+    _systemctl("daemon-reload", check=False)
+    print(f"Юнит записан: {path}")
+
+
+def cmd_setcap(_settings):
+    # Требует root. Даёт mihomo право поднимать TUN/маршруты без постоянного root.
+    subprocess.run(
+        ["setcap", "cap_net_admin,cap_net_raw=+ep", CORE_BIN], check=True
+    )
+    print(f"setcap выдан: {CORE_BIN}")
+
+
+def cmd_info(settings):
+    print(json.dumps({
+        "secret": settings["secret"],
+        "controller_port": settings["controller_port"],
+        "current": settings.get("current"),
+        "dashboard": settings.get("dashboard"),
+        "active": unit_active(),
+        "controller_up": controller_ping(settings),
+        "core_bin": CORE_BIN,
+        "running_config": RUNNING_CONFIG,
+    }, ensure_ascii=False, indent=2))
+
+
+def cmd_status(settings):
+    print("active" if unit_active() else "inactive")
+
+
+def cmd_regen(settings):
+    print(regen(settings))
+
+
+def main():
+    ap = argparse.ArgumentParser(prog="geekcom-clash-ctl")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    for name in ("info", "status", "regen", "start", "stop", "restart",
+                 "list-subs", "install-unit", "setcap"):
+        sub.add_parser(name)
+    p = sub.add_parser("set-sub"); p.add_argument("name")
+    p = sub.add_parser("update-sub"); p.add_argument("name")
+    p = sub.add_parser("add-sub"); p.add_argument("url")
+    args = ap.parse_args()
+
+    settings = load_settings()
+    dispatch = {
+        "info": cmd_info, "status": cmd_status, "regen": cmd_regen,
+        "start": cmd_start, "stop": cmd_stop, "restart": cmd_restart,
+        "list-subs": cmd_list_subs, "install-unit": cmd_install_unit,
+        "setcap": cmd_setcap,
+    }
+    if args.cmd in dispatch:
+        dispatch[args.cmd](settings)
+    elif args.cmd == "set-sub":
+        cmd_set_sub(settings, args.name)
+    elif args.cmd == "update-sub":
+        subs = (settings["_raw"].get("settings", settings["_raw"])).get("subscriptions", {})
+        url = subs.get(args.name)
+        if not url:
+            raise SystemExit(f"Нет url для подписки {args.name}")
+        import subscription as plugin_sub  # ленивый импорт (тянет aiohttp)
+        err = asyncio.run(plugin_sub.update_sub(args.name, url, settings_timeout(settings)))
+        print("ok" if err is None else f"error: {err}")
+        if unit_active():
+            cmd_restart(settings)
+    elif args.cmd == "add-sub":
+        import subscription as plugin_sub  # ленивый импорт (тянет aiohttp)
+        subs = (settings["_raw"].get("settings", settings["_raw"])).get("subscriptions", {})
+        ok, res = plugin_sub.download_sub(args.url, subs)
+        print(json.dumps({"ok": ok, "result": res}, ensure_ascii=False))
+
+
+def settings_timeout(_settings):
+    return 15.0
+
+
+if __name__ == "__main__":
+    main()
