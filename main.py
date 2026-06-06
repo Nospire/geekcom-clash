@@ -463,7 +463,7 @@ class Plugin:
 
     async def check_update(self) -> None:
         name_map = {
-            upgrade.ResourceType.PLUGIN: "DeckyClash",
+            upgrade.ResourceType.PLUGIN: "GeekcomClash",
             upgrade.ResourceType.CORE: "Mihomo",
         }
         for res in upgrade.RESOURCE_TYPE_ENUMS:

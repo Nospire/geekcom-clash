@@ -43,6 +43,14 @@ async def generate_config(
     if skip_steam_download:
         config['rules'] = override_config['skip-steam-rules'] + config['rules']
 
+    # Обязательный роутинг системных сервисов через VPN.
+    # Добавляем группу-сборку всех нод и префиксуем правила (наивысший приоритет).
+    force_group = override_config['force-proxy-group']
+    groups = config.get('proxy-groups') or []
+    if not any(g.get('name') == force_group['name'] for g in groups):
+        config['proxy-groups'] = [force_group] + list(groups)
+    config['rules'] = override_config['force-proxy-rules'] + config['rules']
+
     config['external-controller'] = f'{"0.0.0.0" if allow_remote_access else "127.0.0.1"}:{controller_port}'
     config['secret'] = secret
     config['external-ui'] = dashboard_dir

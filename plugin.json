@@ -1,11 +1,11 @@
 {
-  "name": "Decky Clash",
-  "author": "Chenx Dust",
+  "name": "Geekcom Clash",
+  "author": "Geekcom",
   "flags": ["root"],
   "api_version": 1,
   "publish": {
     "tags": ["root", "network"],
-    "description": "Light-weight Clash/Mihomo proxy client for Steam OS.",
-    "image": "https://github.com/chenx-dust/DeckyClash/raw/refs/heads/main/assets/logo.png"
+    "description": "Geekcom VPN client for Steam Deck (Clash/Mihomo).",
+    "image": "https://github.com/Nospire/geekcom-clash/raw/refs/heads/main/assets/logo.png"
   }
 }

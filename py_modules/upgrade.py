@@ -112,7 +112,7 @@ async def upgrade_plugin(version: str) -> None:
                                     tmp_dir,
                                     format="zip")
             await asyncio.to_thread(shutil.copytree,
-                                    os.path.join(tmp_dir, "DeckyClash"),
+                                    os.path.join(tmp_dir, "GeekcomClash"),
                                     plugin_dir,
                                     dirs_exist_ok=True)
 
@@ -164,7 +164,7 @@ _FUNC_MAP: Dict[ResourceType, Callable[[str], Coroutine[Any, Any, None]]] = {
 }
 
 _URL_MAP: Dict[ResourceType, Callable[[str], str]] = {
-    ResourceType.PLUGIN: lambda ver: f"https://github.com/{PACKAGE_REPO}/releases/download/{ver}/DeckyClash.zip",
+    ResourceType.PLUGIN: lambda ver: f"https://github.com/{PACKAGE_REPO}/releases/download/{ver}/GeekcomClash.zip",
     ResourceType.CORE: lambda ver: f"https://github.com/{CORE_REPO}/releases/download/{ver}/mihomo-linux-amd64-{ver}.gz",
 }
 

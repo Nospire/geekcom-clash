@@ -2,7 +2,7 @@
 
 set -e
 
-PACKAGE="DeckyClash"
+PACKAGE="GeekcomClash"
 BASE_DIR=${OVERRIDE_BASE_DIR:-"${HOME}/homebrew"}
 PLUGIN_DIR="${BASE_DIR}/plugins"
 DATA_DIR="${BASE_DIR}/data"

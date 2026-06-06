@@ -39,6 +39,7 @@ import {
 } from "./backend/core";
 import { ActionButtonItem, FullWidthFieldScope, IconButton, InstallationGuide, RowField } from "./components";
 import { localizationManager, L } from "./i18n";
+import { BRAND } from "./branding";
 import { DeckyClashIcon, TIPS_TIMEOUT } from "./global";
 import { FaExternalLinkAlt, FaPencilAlt } from "react-icons/fa";
 
@@ -662,7 +663,7 @@ const Content: FC<{}> = ({ }) => {
 const DeckyPluginRouter: FC = () => {
   return (
     <SidebarNavigation
-      title="Decky Clash"
+      title={BRAND.name}
       showTitle
       pages={[
         {
@@ -730,9 +731,9 @@ export default definePlugin(() => {
 
   return {
     // The name shown in various decky menus
-    name: "Decky Clash",
+    name: BRAND.name,
     // The element displayed at the top of your plugin's menu
-    title: <div className={staticClasses.Title}>Decky Clash</div>,
+    title: <div className={staticClasses.Title}>{BRAND.name}</div>,
     // The content of your plugin's menu
     content: <Content />,
     // The icon displayed in the plugin list

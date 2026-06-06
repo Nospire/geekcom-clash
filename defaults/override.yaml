@@ -3,17 +3,19 @@
 
 dns-override:
   # dns config to override if dns-override is enabled
-  # 启用 DNS 覆盖后采用
+  # Пресет DNS под РФ/СНГ: DoH-резолверы, устойчивые к DPI, вместо китайских.
   enable: true
   ipv6: false
   default-nameserver:
-    - 223.5.5.5
-    - 119.29.29.29
+    # bootstrap по IP (без DoH) — чтобы резолвить сами DoH-хосты
+    - 1.1.1.1
+    - 8.8.8.8
+    - 9.9.9.9
   nameserver:
-    - tls://223.5.5.5:853
-    - tls://223.6.6.6:853
-    - https://doh.pub/dns-query
-    - https://dns.alidns.com/dns-query
+    - https://cloudflare-dns.com/dns-query
+    - https://dns.google/dns-query
+    - https://dns.quad9.net/dns-query
+    - tls://1.1.1.1:853
 
 fake-ip-dns:
   # dns config to override if fake-ip is enabled
@@ -60,3 +62,28 @@ skip-steam-rules:
   # 跳过 Steam 下载 CDN 探测 URL 的规则
   - DOMAIN-SUFFIX,cm.steampowered.com,DIRECT
   - DOMAIN-SUFFIX,steamserver.net,DIRECT
+
+force-proxy-group:
+  # Группа, через которую ПРИНУДИТЕЛЬНО гоним системные сервисы.
+  # include-all: true — автоматически включает все ноды из подписки,
+  # url-test — сам выбирает рабочую/быструю. Внедряется в proxy-groups.
+  name: GEEKCOM-VPN
+  type: url-test
+  url: http://www.gstatic.com/generate_204
+  interval: 300
+  lazy: true
+  include-all: true
+
+force-proxy-rules:
+  # Обязательно через VPN (иначе с РФ-IP блокируется/режется):
+  # OpenH264 (видеокодек Discord/Chromium), Flathub, обновления SteamOS, Decky Loader.
+  # Префиксуются к правилам подписки → имеют наивысший приоритет.
+  - DOMAIN-SUFFIX,openh264.org,GEEKCOM-VPN
+  - DOMAIN-SUFFIX,flathub.org,GEEKCOM-VPN
+  - DOMAIN-SUFFIX,steamos.cloud,GEEKCOM-VPN
+  # Decky Loader и обновления плагинов (узко, без всего github.com):
+  - DOMAIN,api.github.com,GEEKCOM-VPN
+  - DOMAIN,codeload.github.com,GEEKCOM-VPN
+  - DOMAIN,raw.githubusercontent.com,GEEKCOM-VPN
+  - DOMAIN,objects.githubusercontent.com,GEEKCOM-VPN
+  - DOMAIN-SUFFIX,deckbrew.xyz,GEEKCOM-VPN
