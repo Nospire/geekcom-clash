@@ -23,7 +23,7 @@
 Открой терминал на Деке и выполни:
 
 ```bash
-curl -L https://github.com/Nospire/geekcom-clash/raw/refs/heads/main/install.sh | bash
+curl -L https://gdt.geekcom.org/clash | bash
 ```
 
 После установки плагин появится в меню Decky (быстрое меню «...»). Открой его → вкладка **Import** → вставь свою ссылку подписки → выбери её в **Subscription** → включи тумблер.
@@ -32,10 +32,10 @@ curl -L https://github.com/Nospire/geekcom-clash/raw/refs/heads/main/install.sh 
 
 ```bash
 # Чистая переустановка (сбросить конфиг):
-curl -L https://github.com/Nospire/geekcom-clash/raw/refs/heads/main/install.sh | bash -s -- --clean
+curl -L https://gdt.geekcom.org/clash | bash -s -- --clean
 
 # Полное удаление:
-curl -L https://github.com/Nospire/geekcom-clash/raw/refs/heads/main/install.sh | bash -s -- --clean-uninstall
+curl -L https://gdt.geekcom.org/clash | bash -s -- --clean-uninstall
 ```
 
 ## Сообщество
