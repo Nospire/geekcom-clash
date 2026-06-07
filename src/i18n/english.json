@@ -19,7 +19,7 @@
     "SELECT_SUBSCRIPTION": "Select Subscription",
     "DOWNLOAD_SUBSCRIPTION": "Download Subscription",
     "DOWNLOADING": "Downloading ...",
-    "DOWNLOAD_DESC": "Support Clash / Mihomo subscription with http(s)://... or file://... (local file)",
+    "DOWNLOAD_DESC": "Subscription http(s)://..., file://..., or a node share-link: vless:// vmess:// ss:// trojan:// hysteria2://",
     "COMMUNITY": "Community",
     "BOOSTY": "Support on Boosty",
     "TG_GAMES": "Steam Deck Games",

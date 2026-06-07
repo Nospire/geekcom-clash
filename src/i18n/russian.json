@@ -19,7 +19,7 @@
     "SELECT_SUBSCRIPTION": "Выберите подписку",
     "DOWNLOAD_SUBSCRIPTION": "Загрузить подписку",
     "DOWNLOADING": "Загрузка ...",
-    "DOWNLOAD_DESC": "Подписка Clash / Mihomo: http(s)://... или file://... (локальный файл)",
+    "DOWNLOAD_DESC": "Подписка http(s)://..., файл file://..., или ссылка-нода: vless:// vmess:// ss:// trojan:// hysteria2://",
     "COMMUNITY": "Сообщество",
     "BOOSTY": "Поддержать на Boosty",
     "TG_GAMES": "Steam Deck Games",

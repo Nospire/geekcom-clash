@@ -13,6 +13,7 @@ import decky
 from decky import logger
 import utils
 import metadata
+import sharelink
 
 SUBSCRIPTIONS_DIR = os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "subscriptions")
 
@@ -49,6 +50,46 @@ def _deduplicate_name(now_subs: SubscriptionDict, filename: str) -> Optional[str
             return None
     return filename
 
+def _add_from_sharelink(
+    text: str,
+    now_subs: SubscriptionDict,
+) -> Tuple[bool, Subscription | str]:
+    """
+    Распарсить share-ссылку(и) в Clash-конфиг и сохранить как локальную подписку.
+    Returns: (ok, (filename, "local://filename") | error_message)
+    """
+    proxies, suggested = sharelink.parse(text)
+    if not proxies:
+        logger.error("sharelink: no valid nodes parsed")
+        return False, "Не удалось разобрать ссылку (нет валидных нод)"
+    logger.info(f"sharelink: parsed {len(proxies)} node(s)")
+
+    filename = _deduplicate_name(now_subs, suggested)
+    if filename is None:
+        return False, "No available filename"
+    filename = utils.sanitize_filename(filename)
+    path = get_path(filename)
+
+    try:
+        if os.path.exists(path):
+            os.remove(path)
+        with open(path, "xb") as out_file:
+            out_file.write(sharelink.build_yaml(proxies))
+    except Exception as e:
+        logger.error(f"sharelink: io error: {e}")
+        return False, f"IO error: {e}"
+
+    if not core.CoreController.check_config(path):
+        logger.error("sharelink: generated config invalid")
+        try:
+            os.remove(path)
+        except Exception as e:
+            logger.error(f"sharelink: error removing file: {e}")
+        return False, "Сгенерированный конфиг невалиден"
+
+    return True, (filename, f"local://{filename}")
+
+
 def download_sub(
     url: str,
     now_subs: SubscriptionDict,
@@ -70,6 +111,13 @@ def download_sub(
     logger.info(f"downloading subscription: {url}")
     if not os.path.exists(SUBSCRIPTIONS_DIR):
         os.mkdir(SUBSCRIPTIONS_DIR)
+
+    # Share-ссылки (vless:// vmess:// ss:// trojan:// hysteria2://) и
+    # base64-подписки v2ray-формата — не HTTP, urlopen их не умеет.
+    # Парсим в Clash-конфиг локально.
+    if sharelink.looks_like_sharelink(url):
+        return _add_from_sharelink(url, now_subs)
+
     try:
         ua = _user_agent(user_agent)
         req = urllib.request.Request(url, headers={"User-Agent": ua})
