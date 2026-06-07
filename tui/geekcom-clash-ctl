@@ -53,6 +53,26 @@ os.environ.setdefault("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")
 
 UNIT_NAME = "geekcom-clash.service"
 CONFIG_JSON = os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "config.json")
+
+
+def _atomic_write_json(path, obj):
+    """Атомарная запись через temp + os.replace. Нужны права на КАТАЛОГ
+    (deck-owned), а не на сам файл — поэтому работает, даже если config.json
+    принадлежит root (плагин перезаписывает его как root)."""
+    import tempfile
+    d = os.path.dirname(path)
+    os.makedirs(d, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=d, prefix=".cfg-")
+    try:
+        with os.fdopen(fd, "w") as f:
+            json.dump(obj, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, path)
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except Exception:
+            pass
+        raise
 RUNNING_CONFIG = os.path.join(decky.DECKY_PLUGIN_RUNTIME_DIR, "running_config.yaml")
 CORE_BIN = os.path.join(decky.DECKY_PLUGIN_DIR, "bin", "mihomo")
 
@@ -90,9 +110,7 @@ def save_settings(settings: dict) -> None:
     for k in DEFAULTS:
         if k in settings:
             target[k] = settings[k]
-    os.makedirs(decky.DECKY_PLUGIN_SETTINGS_DIR, exist_ok=True)
-    with open(CONFIG_JSON, "w") as f:
-        json.dump(raw if raw else {k: settings[k] for k in DEFAULTS}, f, indent=2)
+    _atomic_write_json(CONFIG_JSON, raw if raw else {k: settings[k] for k in DEFAULTS})
 
 
 # --- 3. Генерация конфига (переиспользует config.py плагина) -----------------
@@ -326,9 +344,7 @@ def main():
             node["subscriptions"] = subs
             if not node.get("current"):
                 node["current"] = name
-            os.makedirs(decky.DECKY_PLUGIN_SETTINGS_DIR, exist_ok=True)
-            with open(CONFIG_JSON, "w") as f:
-                json.dump(raw, f, ensure_ascii=False, indent=2)
+            _atomic_write_json(CONFIG_JSON, raw)
         print(json.dumps({"ok": ok, "result": res}, ensure_ascii=False))
 
 
