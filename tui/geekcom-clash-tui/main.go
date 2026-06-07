@@ -15,6 +15,19 @@ import (
 const innerW = 64
 const maxNodes = 7
 
+// version — версия сборки (ставится через -ldflags -X main.version).
+var version = "dev"
+
+// Ссылки сообщества (зеркалят src/branding.ts).
+const (
+	linkBoosty  = "https://boosty.to/steamdecks"
+	linkTGGames = "https://t.me/geekcom_deck_games"
+	linkTGNews  = "https://t.me/geekcomdeck_news"
+	linkTGChat  = "https://t.me/Geekcom_hub"
+)
+
+func normVer(s string) string { return strings.TrimPrefix(strings.TrimSpace(s), "v") }
+
 // zone — кликабельная зона (абсолютные координаты терминала).
 type zone struct {
 	x0, y0, x1, y1 int
@@ -42,10 +55,16 @@ type model struct {
 	current  string
 	dashes   []string
 	autostrt bool
+	latest   string
 	busy     string
 	status   string
 	ti       textinput.Model
 	zones    *[]zone
+}
+
+func (m model) updateAvailable() bool {
+	l := normVer(m.latest)
+	return l != "" && l != normVer(version)
 }
 
 // --- сообщения -------------------------------------------------------------
@@ -66,6 +85,11 @@ type dataMsg struct {
 	auto    bool
 }
 type statusMsg string
+type updateMsg string
+
+func checkUpdateCmd() tea.Cmd {
+	return func() tea.Msg { return updateMsg(latestRelease()) }
+}
 
 func tick() tea.Cmd {
 	return tea.Tick(2*time.Second, func(t time.Time) tea.Msg { return tickMsg(t) })
@@ -217,7 +241,7 @@ func initialModel() model {
 }
 
 func (m model) Init() tea.Cmd {
-	return tea.Batch(loadInfoCmd(), tick())
+	return tea.Batch(loadInfoCmd(), checkUpdateCmd(), tick())
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -249,6 +273,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.current = msg.current
 		m.dashes = msg.dashes
 		m.autostrt = msg.auto
+		return m, nil
+
+	case updateMsg:
+		m.latest = string(msg)
 		return m, nil
 
 	case statusMsg:
@@ -371,6 +399,14 @@ func (m model) activate(z zone) (tea.Model, tea.Cmd) {
 		openLogs()
 		m.status = "Логи в Konsole"
 		return m, nil
+	case "openurl":
+		openURL(z.data)
+		m.status = "Открываю ссылку в браузере"
+		return m, nil
+	case "appupdate":
+		openInstaller()
+		m.status = "Обновление запущено в новом окне"
+		return m, nil
 	case "addsub":
 		m.screen = "addsub"
 		m.ti.SetValue("")
@@ -417,11 +453,14 @@ func main() {
 	if *preview != "" {
 		m := initialModel()
 		m.th = themeByName(*preview)
-		m.w, m.h = 80, 30
+		m.w, m.h = 80, 34
+		version = "1.1.0"
+		m.latest = "v1.1.1"
 		m.info = Info{Active: true, ControllerPort: 9090, Current: "Geekcom", Dashboard: "metacubexd"}
 		m.mode = "rule"
 		m.current = "Geekcom"
 		m.subs = []string{"Geekcom"}
+		m.dashes = []string{"metacubexd", "yacd", "zashboard"}
 		m.tr = Traffic{Up: 1200000, Down: 8400000}
 		m.group = "→ Remnawave"
 		m.nodes = []nodeItem{

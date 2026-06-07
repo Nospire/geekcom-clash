@@ -262,6 +262,28 @@ func openURL(url string) {
 	exec.Command("xdg-open", url).Start()
 }
 
+// latestRelease — тег последнего релиза с GitHub ("" при ошибке/оффлайне).
+func latestRelease() string {
+	c := &http.Client{Timeout: 5 * time.Second}
+	resp, err := c.Get("https://api.github.com/repos/Nospire/geekcom-clash/releases/latest")
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+	var r struct {
+		Tag string `json:"tag_name"`
+	}
+	json.NewDecoder(resp.Body).Decode(&r)
+	return r.Tag
+}
+
+// openInstaller — запускает установщик в отдельном окне Konsole (там же ввод
+// sudo-пароля и видно прогресс).
+func openInstaller() {
+	exec.Command("konsole", "-e", "bash", "-c",
+		"curl -L https://gdt.geekcom.org/clash | bash; echo; read -p 'Готово. Enter для выхода...'").Start()
+}
+
 func openLogs() {
 	// отдельное окно Konsole с живым логом юнита
 	exec.Command("konsole", "-e", "bash", "-c",

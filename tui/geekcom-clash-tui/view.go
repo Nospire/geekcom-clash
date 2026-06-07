@@ -81,7 +81,8 @@ func (m model) View() string {
 	base := lipgloss.NewStyle().Background(t.Bg).Foreground(t.Fg)
 	b := &builder{m: m, base: base}
 
-	title := lipgloss.NewStyle().Background(t.Bg).Foreground(t.Accent).Bold(true).Render(" Geekcom Clash")
+	title := lipgloss.NewStyle().Background(t.Bg).Foreground(t.Accent).Bold(true).Render(" Geekcom Clash") +
+		lipgloss.NewStyle().Background(t.Bg).Foreground(t.Muted).Render(" v"+normVer(version))
 	gear := lipgloss.NewStyle().Background(t.Bg).Foreground(t.Muted).Render(" ⚙ ")
 	pad := innerW - lipgloss.Width(title) - lipgloss.Width(gear)
 	if pad < 1 {
@@ -147,6 +148,14 @@ func (m model) renderMain(b *builder) {
 	b.line(base.Render(" ") + dot + base.Render(" ") +
 		lipgloss.NewStyle().Background(t.Bg).Foreground(t.Fg).Bold(true).Render(stTxt))
 	b.blank()
+
+	// доступно обновление
+	if m.updateAvailable() {
+		b.line(lipgloss.NewStyle().Background(t.Bg).Foreground(t.Warn).
+			Render(" ⬆ Доступно обновление " + m.latest))
+		b.buttonsRow(2, []btnSpec{{label: "⬆ Обновить", id: "appupdate", active: true}})
+		b.blank()
+	}
 
 	// большая кнопка вкл/выкл
 	label := "⏻   ВКЛЮЧИТЬ"
@@ -241,6 +250,16 @@ func (m model) renderMain(b *builder) {
 	}
 	b.line(base.Render(" Авто-старт при загрузке"))
 	b.buttonsRow(2, []btnSpec{{label: autoLbl, id: "autostart", active: m.autostrt}})
+	b.blank()
+
+	// сообщество
+	b.line(base.Render(" Сообщество"))
+	b.buttonsRow(2, []btnSpec{
+		{label: "❤ Boosty", id: "openurl", data: linkBoosty},
+		{label: "✈ Канал", id: "openurl", data: linkTGGames},
+		{label: "✈ Новости", id: "openurl", data: linkTGNews},
+		{label: "✈ Чат", id: "openurl", data: linkTGChat},
+	})
 }
 
 func markPlain(sel bool) string {

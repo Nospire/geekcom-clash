@@ -35,6 +35,14 @@ class Plugin:
             logger.error(f"initialize_plugin: failed with {e}")
             logger.debug(f"stack trace: {utils.get_traceback(e)}")
 
+        # Раскатать/обновить десктоп-набор (TUI/ярлык/юнит/setcap/polkit).
+        # Покрывает апдейт через страницу плагина (upgrade.py), где install.sh
+        # не запускается. Фоном, чтобы не блокировать загрузку.
+        try:
+            asyncio.create_task(self._deploy_desktop())
+        except Exception as e:
+            logger.error(f"deploy_desktop schedule failed: {e}")
+
         self._set_default("subscriptions", {})
         self._set_default("secret", utils.rand_thing())
         self._set_default("override_dns", True)
@@ -137,6 +145,38 @@ class Plugin:
         is_running = self.core.is_running
         logger.debug(f"get_core_status: {is_running}")
         return is_running
+
+    async def _deploy_desktop(self):
+        """Развернуть десктоп-набор для пользователя (плагин работает как root)."""
+        try:
+            script = os.path.join(decky.DECKY_PLUGIN_DIR, "desktop", "deploy-desktop.sh")
+            if not os.path.exists(script):
+                return
+            import pwd
+            user = os.environ.get("DECKY_USER", "deck")
+            try:
+                home = pwd.getpwnam(user).pw_dir
+            except KeyError:
+                home = f"/home/{user}"
+            version = str(decky.DECKY_PLUGIN_VERSION)
+            stamp = os.path.join(home, ".local", "share", "geekcom-clash", ".deployed-version")
+            try:
+                with open(stamp) as f:
+                    if f.read().strip() == version:
+                        return  # уже развёрнуто этой версии
+            except Exception:
+                pass
+            env = dict(os.environ,
+                       GCC_USER=user,
+                       GCC_PLUGIN_DIR=decky.DECKY_PLUGIN_DIR,
+                       GCC_VERSION=version)
+            logger.info(f"deploy-desktop: deploying for {user} ({version})")
+            proc = await asyncio.create_subprocess_exec(
+                "bash", script, env=env,
+                stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
+            await asyncio.wait_for(proc.wait(), timeout=120)
+        except Exception as e:
+            logger.error(f"deploy_desktop failed: {e}")
 
     async def set_core_status(self, status: bool) -> Tuple[bool, Optional[str]]:
         try:
