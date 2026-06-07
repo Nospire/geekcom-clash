@@ -37,14 +37,6 @@ class Plugin:
             logger.error(f"initialize_plugin: failed with {e}")
             logger.debug(f"stack trace: {utils.get_traceback(e)}")
 
-        # Раскатать/обновить десктоп-набор (TUI/ярлык/юнит/setcap/polkit).
-        # Покрывает апдейт через страницу плагина (upgrade.py), где install.sh
-        # не запускается. Фоном, чтобы не блокировать загрузку.
-        try:
-            asyncio.create_task(self._deploy_desktop())
-        except Exception as e:
-            logger.error(f"deploy_desktop schedule failed: {e}")
-
         self._set_default("subscriptions", {})
         self._set_default("secret", utils.rand_thing())
         self._set_default("override_dns", True)
@@ -74,6 +66,15 @@ class Plugin:
 
         self.core = CoreController()
         self.core.set_exit_callback(lambda x: decky.emit("core_exit", x))
+
+        # Раскатать/обновить десктоп-набор (TUI/ярлык/юнит/setcap/polkit) —
+        # покрывает апдейт через страницу плагина. Awaited, чтобы юнит существовал
+        # до автозапуска (единая служба).
+        try:
+            await self._deploy_desktop()
+        except Exception as e:
+            logger.error(f"deploy_desktop failed: {e}")
+
         if self._get("autostart"):
             await self.set_core_status(True)
 
@@ -196,7 +197,7 @@ class Plugin:
     async def set_core_status(self, status: bool) -> Tuple[bool, Optional[str]]:
         try:
             if status:
-                await self.generate_config()
+                # Конфиг генерит ExecStartPre юнита (ctl regen) от имени deck.
                 await self.core.start()
             else:
                 await self.core.stop()
@@ -207,27 +208,10 @@ class Plugin:
         return True, None
 
     async def restart_core(self) -> None:
-        logger.debug("soft restarting core ...")
-        await self.generate_config()
-        port = self._get("controller_port")
-        payload = json.dumps({"payload": ""})
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f'Bearer {self._get("secret")}',
-        }
-        try:
-            req = urllib.request.Request(f"http://127.0.0.1:{port}/restart",
-                                        data=payload.encode(),
-                                        headers=headers,
-                                        method="POST")
-            resp: HTTPResponse = urllib.request.urlopen(req, timeout=self._get("timeout"))
-            if resp.status != 200:
-                logger.error(f"restart_core: failed with status code {resp.status}")
-                self.core.restart()
-        except Exception as e:
-            logger.error(f"restart_core: failed with {e}")
-            logger.debug(f"stack trace: {utils.get_traceback(e)}")
-            self.core.restart()
+        # Перезапуск единой службы: ExecStartPre пере-генерит конфиг по текущим
+        # настройкам (плагин и TUI используют один geekcom-clash.service).
+        logger.debug("restarting core (unit) ...")
+        await self.core.restart()
 
     async def kill_core(self) -> bool:
         return CoreController.kill(self._get("timeout"))

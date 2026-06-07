@@ -1,16 +1,50 @@
 import asyncio
+import functools
 import os
-from pathlib import Path
+import pwd
 import subprocess
 from typing import Awaitable, Callable, Optional, List
 
 import decky
 from decky import logger
-import utils
 
 LAST_CORE_VERSION = "1.19.25"
 
 ExitCallback = Callable[[Optional[int]], Awaitable[None]]
+
+# Единая служба для плагина (игровой режим) и desktop-TUI: один mihomo под
+# systemd --user юнитом geekcom-clash.service. Плагин работает как root, юнит
+# принадлежит пользователю (DECKY_USER) → управляем через runuser + чистый env
+# (Decky инжектит LD_LIBRARY_PATH, ломающий системные бинари).
+UNIT = "geekcom-clash.service"
+
+
+def _target_user() -> str:
+    return os.environ.get("DECKY_USER", "deck")
+
+
+def _clean_env(user: str) -> dict:
+    env = {k: v for k, v in os.environ.items()
+           if k not in ("LD_LIBRARY_PATH", "LD_PRELOAD")}
+    env["PATH"] = "/usr/sbin:/usr/bin:/sbin:/bin"
+    try:
+        uid = pwd.getpwnam(user).pw_uid
+    except KeyError:
+        uid = 1000
+    env["XDG_RUNTIME_DIR"] = f"/run/user/{uid}"
+    return env
+
+
+def _systemctl_user(*args: str, timeout: Optional[float] = 30) -> subprocess.CompletedProcess:
+    """systemctl --user <args> для целевого пользователя."""
+    user = _target_user()
+    env = _clean_env(user)
+    if os.geteuid() == 0:
+        cmd = ["runuser", "-u", user, "--", "systemctl", "--user", *args]
+    else:
+        cmd = ["systemctl", "--user", *args]
+    return subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=timeout)
+
 
 class CoreController:
     BIN_NAME = "mihomo"
@@ -19,124 +53,69 @@ class CoreController:
     RESOURCE_DIR = decky.DECKY_PLUGIN_RUNTIME_DIR
 
     def __init__(self):
-
-        self._process: Optional[asyncio.subprocess.Process] = None
-        self._command: List[str] = []
         self._exit_callback: Optional[ExitCallback] = None
-        self._monitor_task: Optional[asyncio.Task] = None
 
     @property
     def is_running(self) -> bool:
-        if not self._process:
+        try:
+            r = _systemctl_user("is-active", UNIT, timeout=10)
+            return r.stdout.strip() == "active"
+        except Exception as e:
+            logger.error(f"is_running: {e}")
             return False
-        if self._process.returncode is None:
-            return True
-        return False
+
+    async def _ctl(self, *args: str) -> subprocess.CompletedProcess:
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, functools.partial(_systemctl_user, *args))
+
+    async def start(self) -> None:
+        # Конфиг генерит ExecStartPre юнита (ctl regen) от имени пользователя.
+        r = await self._ctl("start", UNIT)
+        if r.returncode != 0:
+            msg = (r.stderr or "").strip() or f"systemctl rc={r.returncode}"
+            logger.error(f"core start failed: {msg}")
+            raise RuntimeError(msg)
+        logger.info("core started via geekcom-clash.service")
+
+    async def stop(self) -> None:
+        r = await self._ctl("stop", UNIT)
+        if r.returncode != 0:
+            logger.warning(f"core stop rc={r.returncode}: {(r.stderr or '').strip()}")
+
+    async def restart(self) -> None:
+        # restart перечитывает ExecStartPre (ctl regen) → свежий конфиг.
+        r = await self._ctl("restart", UNIT)
+        if r.returncode != 0:
+            logger.error(f"core restart failed: {(r.stderr or '').strip()}")
+
+    def set_exit_callback(self, callback: Optional[ExitCallback]):
+        # systemd сам рестартит ядро (Restart=on-failure); отдельный монитор не нужен.
+        self._exit_callback = callback
 
     @classmethod
     def _gen_cmd(cls, config_path: str) -> List[str]:
-        return [
-            cls.CORE_PATH,
-            "-f",
-            config_path,
-            "-d",
-            cls.RESOURCE_DIR,
-        ]
-
-    async def start(self) -> None:
-        if self._process and self._process.returncode is None:
-            logger.warning("core is already running")
-            return
-
-        command = self._gen_cmd(self.CONFIG_PATH)
-        logger.info(f"starting core: {' '.join(command)}")
-        self._command = command
-
-        log_path = os.path.join(decky.DECKY_PLUGIN_LOG_DIR, "core.log")
-        logger.info(f"core log file: {log_path}")
-        self._logfile = open(log_path, 'w')
-
-        try:
-            self._process = await asyncio.create_subprocess_exec(
-                *command,
-                stdout=self._logfile,
-                stderr=self._logfile,
-                env=utils.env_fix(),
-            )
-            logger.debug(f"core pid: {self._process.pid}")
-            self._monitor_task = asyncio.create_task(self._monitor_exit())
-        except Exception as e:
-            logger.error(f"failed to start core: {str(e)}")
-            self._logfile.close()
-            self._logfile = None
-            raise
-
-    async def stop(self) -> None:
-        if not self._process or self._process.returncode is not None:
-            logger.warning("no running core")
-            return
-
-        logger.info(f"terminating core (PID: {self._process.pid})")
-        if self._monitor_task is not None:
-            self._monitor_task.cancel()
-            self._monitor_task = None
-        try:
-            self._process.terminate()
-        except Exception as e:
-            logger.error(f"failed to terminate core with error: {e}")
-            self.kill()
-        finally:
-            self._process = None
-            logger.debug("core terminated")
-            if self._logfile:
-                self._logfile.close()
-                self._logfile = None
-
-    async def restart(self) -> None:
-        logger.info("restarting core ...")
-        await self.stop()
-        await self.start()
-
-    async def _monitor_exit(self):
-        assert self._process is not None
-        returncode = await self._process.wait()
-        logger.debug(f"core exited with code: {returncode}")
-
-        if self._exit_callback is not None:
-            try:
-                await self._exit_callback(returncode)
-            except Exception as e:
-                logger.error(f"error in exit callback: {str(e)}")
-
-    def set_exit_callback(self, callback: Optional[ExitCallback]):
-        self._exit_callback = callback
+        return [cls.CORE_PATH, "-f", config_path, "-d", cls.RESOURCE_DIR]
 
     @classmethod
     def check_config(cls, config_path: str) -> bool:
         command = cls._gen_cmd(config_path)
         command.append("-t")
         logger.debug(f"check_config: {' '.join(command)}")
-
         try:
             return_code = subprocess.call(command)
         except Exception as e:
-            logger.error(f"failed to start core: {e}")
+            logger.error(f"check_config: failed with {e}")
             raise
-
         logger.debug(f"check_config: return code: {return_code}")
         return return_code == 0
 
     @classmethod
     def get_version(cls) -> str:
         try:
-            cmd = [ cls.CORE_PATH, "-v" ]
-            logger.debug(f"get_version: cmd: {' '.join(cmd)}")
-            output = subprocess.check_output(cmd)
+            output = subprocess.check_output([cls.CORE_PATH, "-v"])
         except Exception as e:
-            logger.error(f"get_version: failed to start core: {str(e)}")
+            logger.error(f"get_version: failed with {str(e)}")
             return ""
-
-        logger.debug(f"get_version: output: {output}")
         for s in output.decode().split(" "):
             if s.startswith("v"):
                 global LAST_CORE_VERSION
@@ -146,26 +125,15 @@ class CoreController:
 
     @classmethod
     def kill(cls, timeout: Optional[float] = None) -> bool:
-        logger.debug(f"killing core by process name: {cls.BIN_NAME}")
-
+        # Сначала останавливаем юнит, затем добиваем процесс на всякий случай.
         try:
-            result = subprocess.run(
-                ["pkill", "-KILL", "-x", cls.BIN_NAME],
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-            )
+            _systemctl_user("stop", UNIT, timeout=timeout or 15)
+        except Exception as e:
+            logger.warning(f"kill: unit stop failed: {e}")
+        try:
+            subprocess.run(["pkill", "-KILL", "-x", cls.BIN_NAME],
+                           capture_output=True, text=True, timeout=timeout)
         except Exception as e:
             logger.error(f"kill core: failed with {e}")
             return False
-
-        if result.returncode == 0:
-            return True
-
-        logger.error(
-            "kill core: pkill failed with code %s, stdout=%s, stderr=%s",
-            result.returncode,
-            result.stdout.strip(),
-            result.stderr.strip(),
-        )
-        return False
+        return True
