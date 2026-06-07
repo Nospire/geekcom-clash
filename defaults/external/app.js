@@ -1,5 +1,25 @@
 // Translation resources
 const translations = {
+  'ru': {
+    'import-tip': 'Импорт подписки Clash / Mihomo',
+    'import-file-tip': 'Импорт файла',
+    'sub-link': 'Ссылка подписки',
+    'sel-lang': 'Язык:',
+    'loading': 'Загрузка',
+    'loading-msg': 'Загружаю подписку, подождите ...',
+    'uploading': 'Отправка',
+    'uploading-msg': 'Отправляю файл подписки, подождите ...',
+    'success': 'Готово',
+    'success-msg': 'Подписка импортирована',
+    'backend-err': 'Ошибка сервера',
+    'resp-status': 'Статус ответа:',
+    'frontend-err': 'Ошибка',
+    'err-msg': 'Сообщение:',
+    'err-name': 'Тип ошибки:',
+    'ok': 'OK',
+    'please-enter-link': 'Введите ссылку подписки',
+    'please-select-file': 'Выберите файл подписки'
+  },
   'en': {
     'import-tip': 'Clash / Mihomo Subscription Import',
     'import-file-tip': 'Import File',
@@ -50,6 +70,9 @@ function detectLanguage() {
   const browserLang = navigator.language || navigator.userLanguage;
   if (browserLang.startsWith('zh')) {
     return 'zh-CN';
+  }
+  if (browserLang.startsWith('ru')) {
+    return 'ru';
   }
   return 'en';
 }

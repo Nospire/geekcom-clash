@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -58,6 +59,8 @@ type model struct {
 	latest   string
 	busy     string
 	status   string
+	importer *http.Server
+	impURL   string
 	ti       textinput.Model
 	zones    *[]zone
 }
@@ -320,6 +323,9 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	switch msg.String() {
 	case "q", "ctrl+c":
+		if m.importer != nil {
+			m.importer.Close()
+		}
 		return m, tea.Quit
 	case "esc":
 		m.screen = "main"
@@ -407,6 +413,23 @@ func (m model) activate(z zone) (tea.Model, tea.Cmd) {
 		openInstaller()
 		m.status = "Обновление запущено в новом окне"
 		return m, nil
+	case "webimport":
+		if m.importer != nil {
+			m.importer.Close()
+			m.importer = nil
+			m.impURL = ""
+			m.status = "Веб-импорт выключен"
+			return m, nil
+		}
+		srv, url, err := startImporter()
+		if err != nil {
+			m.status = "Веб-импорт: " + err.Error()
+			return m, nil
+		}
+		m.importer = srv
+		m.impURL = url
+		m.status = "Веб-импорт включён"
+		return m, nil
 	case "addsub":
 		m.screen = "addsub"
 		m.ti.SetValue("")
@@ -450,10 +473,20 @@ func (m model) activate(z zone) (tea.Model, tea.Cmd) {
 func main() {
 	preview := flag.String("preview", "", "render one frame to stdout (dracula|macchiato) and exit")
 	showVer := flag.Bool("version", false, "print version and exit")
+	importerOnly := flag.Bool("importer", false, "run only the subscription importer web server")
 	flag.Parse()
 	if *showVer {
 		fmt.Println(version)
 		return
+	}
+	if *importerOnly {
+		_, url, err := startImporter()
+		if err != nil {
+			fmt.Println("importer error:", err)
+			os.Exit(1)
+		}
+		fmt.Println("importer:", url)
+		select {} // block forever
 	}
 	if *preview != "" {
 		m := initialModel()

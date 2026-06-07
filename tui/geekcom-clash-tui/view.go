@@ -195,6 +195,18 @@ func (m model) renderMain(b *builder) {
 	})
 	b.blank()
 
+	// веб-импорт с телефона
+	impLbl := " ВЫКЛ "
+	if m.importer != nil {
+		impLbl = " ВКЛ "
+	}
+	b.line(base.Render(" Веб-импорт (с телефона)"))
+	b.buttonsRow(2, []btnSpec{{label: impLbl, id: "webimport", active: m.importer != nil}})
+	if m.impURL != "" {
+		b.line(lipgloss.NewStyle().Background(t.Bg).Foreground(t.Accent).Render("   " + m.impURL))
+	}
+	b.blank()
+
 	if m.info.Active {
 		// ноды
 		b.line(base.Render(" Нода") + lipgloss.NewStyle().Background(t.Bg).Foreground(t.Muted).Render("   (тык — выбрать)") )

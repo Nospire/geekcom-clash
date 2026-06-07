@@ -70,7 +70,7 @@ h1 {
 
 #download-btn {
   width: 3rem;
-  background-color: #6366f1;
+  background-color: #a4632e;
   display: flex;
   justify-content: center;
   align-items: center;
@@ -82,7 +82,7 @@ h1 {
 }
 
 #download-btn:hover {
-  background-color: #4f46e5;
+  background-color: #8a5326;
 }
 
 #download-btn svg {
@@ -391,7 +391,7 @@ h1 {
 
 /* Modal button */
 .modal-button {
-  background-color: #6366f1;
+  background-color: #a4632e;
   color: #ffffff;
   border: none;
   border-radius: 0.5rem;
@@ -403,13 +403,13 @@ h1 {
 }
 
 .modal-button:hover {
-  background-color: #4f46e5;
+  background-color: #8a5326;
 }
 
 /* Loading animation */
 .loading-spinner {
   border: 3px solid #f3f4f6;
-  border-top: 3px solid #6366f1;
+  border-top: 3px solid #a4632e;
   border-radius: 50%;
   width: 4rem;
   height: 4rem;

@@ -306,14 +306,29 @@ def main():
         if not url:
             raise SystemExit(f"Нет url для подписки {args.name}")
         import subscription as plugin_sub  # ленивый импорт (тянет aiohttp)
+        import utils as plugin_utils
+        plugin_utils.init_ssl_context(False)
         err = asyncio.run(plugin_sub.update_sub(args.name, url, settings_timeout(settings)))
         print("ok" if err is None else f"error: {err}")
         if unit_active():
             cmd_restart(settings)
     elif args.cmd == "add-sub":
         import subscription as plugin_sub  # ленивый импорт (тянет aiohttp)
-        subs = (settings["_raw"].get("settings", settings["_raw"])).get("subscriptions", {})
+        import utils as plugin_utils
+        plugin_utils.init_ssl_context(False)  # плагин делает это в _main; ctl — здесь
+        raw = settings["_raw"] if isinstance(settings["_raw"], dict) else {}
+        node = raw.get("settings", raw)
+        subs = node.get("subscriptions", {})
         ok, res = plugin_sub.download_sub(args.url, subs)
+        if ok:
+            name, url = res
+            subs[name] = url
+            node["subscriptions"] = subs
+            if not node.get("current"):
+                node["current"] = name
+            os.makedirs(decky.DECKY_PLUGIN_SETTINGS_DIR, exist_ok=True)
+            with open(CONFIG_JSON, "w") as f:
+                json.dump(raw, f, ensure_ascii=False, indent=2)
         print(json.dumps({"ok": ok, "result": res}, ensure_ascii=False))
 
 
