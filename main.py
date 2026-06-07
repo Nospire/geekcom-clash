@@ -1,8 +1,10 @@
 import asyncio
+import functools
 from http.client import HTTPResponse
 import json
 import logging
 import os
+import subprocess
 from pathlib import Path
 import shutil
 from typing import Any, Dict, List, Optional, Tuple
@@ -166,15 +168,28 @@ class Plugin:
                         return  # уже развёрнуто этой версии
             except Exception:
                 pass
-            env = dict(os.environ,
-                       GCC_USER=user,
-                       GCC_PLUGIN_DIR=decky.DECKY_PLUGIN_DIR,
-                       GCC_VERSION=version)
             logger.info(f"deploy-desktop: deploying for {user} ({version})")
-            proc = await asyncio.create_subprocess_exec(
-                "bash", script, env=env,
-                stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL)
-            await asyncio.wait_for(proc.wait(), timeout=120)
+            # ВАЖНО: asyncio-спавн в decky-рантайме ненадёжен (логируется, но не
+            # выполняется), поэтому запускаем blocking subprocess.run в треде через
+            # run_in_executor. bash зовём напрямую (deploy-desktop.sh отрабатывает
+            # от root и с минимальным окружением), но PATH задаём явно.
+            # Decky инжектит свой LD_LIBRARY_PATH (бандленная libreadline и пр.) →
+            # системный bash падает с symbol lookup error. Чистим его для дочерних.
+            env = dict(os.environ)
+            env.pop("LD_LIBRARY_PATH", None)
+            env.pop("LD_PRELOAD", None)
+            env["PATH"] = "/usr/sbin:/usr/bin:/sbin:/bin"
+            env["GCC_USER"] = user
+            env["GCC_PLUGIN_DIR"] = decky.DECKY_PLUGIN_DIR
+            env["GCC_VERSION"] = version
+            loop = asyncio.get_event_loop()
+            r = await loop.run_in_executor(None, functools.partial(
+                subprocess.run, ["/usr/bin/bash", script], env=env,
+                capture_output=True, text=True, timeout=90))
+            logger.info(f"deploy-desktop: rc={r.returncode}")
+            if r.returncode != 0:
+                logger.error(f"deploy-desktop OUT: {(r.stdout or '')[-400:]}")
+                logger.error(f"deploy-desktop ERR: {(r.stderr or '')[-400:]}")
         except Exception as e:
             logger.error(f"deploy_desktop failed: {e}")
 

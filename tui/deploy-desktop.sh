@@ -10,6 +10,7 @@
 #   GCC_PLUGIN_DIR — каталог плагина (по умолчанию ~target/homebrew/plugins/GeekcomClash)
 #   GCC_VERSION    — версия (пишется в стамп, чтобы плагин не редеплоил каждый раз)
 set -e
+export PATH="/usr/sbin:/usr/bin:/sbin:/bin:${PATH}"
 
 TARGET_USER="${GCC_USER:-$(id -un)}"
 TARGET_HOME=$(getent passwd "$TARGET_USER" | cut -d: -f6)
