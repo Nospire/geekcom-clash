@@ -20,14 +20,45 @@ func externalDir() string {
 	return filepath.Join(home, "homebrew", "plugins", "GeekcomClash", "external")
 }
 
-// lanIP — локальный IPv4 для ссылки (чтобы открыть с телефона).
+// lanIP — реальный LAN-IPv4 (192.168/10/172.16) для ссылки на телефон.
+// НЕ udp-dial к 8.8.8.8: при включённом VPN маршрут уходит в tun Meta и вернётся
+// его адрес 198.18.x. Перебираем интерфейсы, пропуская tun/VPN/виртуальные.
 func lanIP() string {
-	c, err := net.Dial("udp", "8.8.8.8:80")
+	ifaces, err := net.Interfaces()
 	if err != nil {
 		return "127.0.0.1"
 	}
-	defer c.Close()
-	return c.LocalAddr().(*net.UDPAddr).IP.String()
+	for _, ifc := range ifaces {
+		if ifc.Flags&net.FlagUp == 0 || ifc.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+		n := strings.ToLower(ifc.Name)
+		if strings.Contains(n, "meta") || strings.Contains(n, "tun") ||
+			strings.Contains(n, "utun") || strings.Contains(n, "wg") ||
+			strings.Contains(n, "docker") || strings.Contains(n, "veth") {
+			continue
+		}
+		addrs, _ := ifc.Addrs()
+		for _, a := range addrs {
+			var ip net.IP
+			switch v := a.(type) {
+			case *net.IPNet:
+				ip = v.IP
+			case *net.IPAddr:
+				ip = v.IP
+			}
+			ip4 := ip.To4()
+			if ip4 == nil {
+				continue
+			}
+			if ip4[0] == 192 && ip4[1] == 168 ||
+				ip4[0] == 10 ||
+				ip4[0] == 172 && ip4[1] >= 16 && ip4[1] <= 31 {
+				return ip4.String()
+			}
+		}
+	}
+	return "127.0.0.1"
 }
 
 // startImporter поднимает мини веб-сервер импортёра подписок.
