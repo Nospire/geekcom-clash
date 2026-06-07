@@ -449,7 +449,12 @@ func (m model) activate(z zone) (tea.Model, tea.Cmd) {
 
 func main() {
 	preview := flag.String("preview", "", "render one frame to stdout (dracula|macchiato) and exit")
+	showVer := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
+	if *showVer {
+		fmt.Println(version)
+		return
+	}
 	if *preview != "" {
 		m := initialModel()
 		m.th = themeByName(*preview)
