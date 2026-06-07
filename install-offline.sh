@@ -7,6 +7,33 @@ BASE_DIR=${OVERRIDE_BASE_DIR:-"${HOME}/homebrew"}
 PLUGIN_DIR="${BASE_DIR}/plugins"
 DATA_DIR="${BASE_DIR}/data"
 
+# Разбор флагов: -y/--yes — неинтерактивный режим (авто-подтверждение).
+YES_ALL=false
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -y|--yes) YES_ALL=true; shift ;;
+    *) shift ;;
+  esac
+done
+
+# Определяем prompt_continue ДО первого использования (root-ветка ниже её зовёт).
+function prompt_continue() {
+  if [ "$YES_ALL" = "true" ]; then
+    return 0
+  fi
+  local response
+  read -p "Do you want to continue? [Y/n] " response
+  response=${response,,}
+  if [[ -z "$response" || "$response" == "y" || "$response" == "yes" ]]; then
+    return 0
+  elif [[ "$response" == "n" || "$response" == "no" ]]; then
+    return 1
+  else
+    echo "Invalid response. Not continuing."
+    return 1
+  fi
+}
+
 if [ "$UID" -eq 0 ]; then
   echo "WARNING: Running as root."
   echo "This may cause permission issues."
@@ -28,24 +55,6 @@ if [ ! -d "$BASE_DIR" ]; then
   echo "curl -L https://github.com/SteamDeckHomebrew/decky-installer/releases/latest/download/install_release.sh | sh"
   exit 1
 fi
-
-function prompt_continue() {
-  local response
-  read -p "Do you want to continue? [Y/n] " response
-
-  # Convert the response to lowercase
-  response=${response,,}
-
-  # Check the response
-  if [[ -z "$response" || "$response" == "y" || "$response" == "yes" ]]; then
-    true
-  elif [[ "$response" == "n" || "$response" == "no" ]]; then
-    false
-  else
-    echo "Invalid response. Not continuing."
-    false
-  fi
-}
 
 function mv_impl() {
   local src="$1"
