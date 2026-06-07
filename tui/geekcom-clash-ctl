@@ -114,10 +114,26 @@ def save_settings(settings: dict) -> None:
 
 
 # --- 3. Генерация конфига (переиспользует config.py плагина) -----------------
+def _autoselect_sole_sub(settings: dict) -> None:
+    """Если подписка не выбрана, но в наличии ровно одна — выбрать её.
+    Спасает кейс «добавил, но не нажал выбрать» (частый у новичков)."""
+    if settings.get("current"):
+        return
+    raw = settings["_raw"] if isinstance(settings["_raw"], dict) else {}
+    node = raw.get("settings", raw)
+    subs = node.get("subscriptions", {})
+    if len(subs) == 1:
+        name = next(iter(subs))
+        settings["current"] = name
+        node["current"] = name
+        _atomic_write_json(CONFIG_JSON, raw)
+
+
 def regen(settings: dict) -> str:
+    _autoselect_sole_sub(settings)
     current = settings.get("current")
     if not current:
-        raise SystemExit("Подписка не выбрана (settings.current пуст)")
+        raise SystemExit("Подписка не выбрана: добавьте подписку (＋) и выберите её")
     # путь подписки тот же, что у плагина (subscription.get_path), без импорта модуля
     ori = os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "subscriptions", current + ".yaml")
     if not os.path.exists(ori):

@@ -58,7 +58,12 @@ asuser chmod +x "$WRAP"
 TMP=$(mktemp)
 printf '%s ALL=(root) NOPASSWD: %s\n' "$TARGET_USER" "$WRAP" > "$TMP"
 if asroot visudo -cf "$TMP" >/dev/null 2>&1; then
-  asroot install -m 0440 -o root -g root "$TMP" /etc/sudoers.d/geekcom-clash
+  # ВАЖНО: имя файла должно сортироваться ПОСЛЕ /etc/sudoers.d/wheel
+  # (%wheel ALL=(ALL) ALL — с паролем). sudo применяет последнее совпадение,
+  # поэтому при имени "geekcom-clash" (до "wheel") правило wheel перебивало
+  # наш NOPASSWD. Префикс "zz-" гарантирует, что наше правило — последнее.
+  asroot install -m 0440 -o root -g root "$TMP" /etc/sudoers.d/zz-geekcom-clash
+  asroot rm -f /etc/sudoers.d/geekcom-clash   # снести старое (битое) имя
 fi
 rm -f "$TMP"
 
