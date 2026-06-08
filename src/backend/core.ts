@@ -1,5 +1,9 @@
 export type ClashMode = "rule" | "global" | "direct";
 
+// Имя url-test группы из override.yaml (force-proxy-group.name).
+// На неё направляем селектор GLOBAL в режиме global.
+const FORCE_PROXY_GROUP = "GEEKCOM-VPN";
+
 const CLASH_MODES: ClashMode[] = ["rule", "global", "direct"];
 
 interface ClashConfigs {
@@ -64,6 +68,26 @@ export const setClashMode = async (
   });
   if (!response.ok)
     throw new Error(`PATCH /configs failed: ${response.status}`);
+
+  // В режиме global трафик идёт через встроенный селектор GLOBAL, а он по
+  // умолчанию (и из-за store-selected) может указывать на DIRECT → VPN молча
+  // не работает. Направляем GLOBAL на нашу VPN-группу (force-proxy-group из
+  // override.yaml), чтобы «Global» реально гнал весь трафик через VPN.
+  // Best-effort: не валим переключение режима, если выбор не удался.
+  if (mode === "global") {
+    try {
+      await fetch(getControllerUrl(controllerPort, "/proxies/GLOBAL"), {
+        method: "PUT",
+        headers: {
+          ...getHeaders(secret),
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ name: FORCE_PROXY_GROUP }),
+      });
+    } catch {
+      // ignore — режим всё равно переключён
+    }
+  }
 };
 
 const isObject = (value: unknown): value is Record<string, unknown> => {

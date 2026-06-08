@@ -176,9 +176,21 @@ func (a *apiClient) mode() string {
 	return c.Mode
 }
 
+// forceGroup — имя url-test группы из override.yaml (force-proxy-group.name).
+const forceGroup = "GEEKCOM-VPN"
+
 func (a *apiClient) setMode(m string) error {
-	_, err := a.do("PATCH", "/configs", []byte(fmt.Sprintf(`{"mode":%q}`, m)))
-	return err
+	if _, err := a.do("PATCH", "/configs", []byte(fmt.Sprintf(`{"mode":%q}`, m))); err != nil {
+		return err
+	}
+	// В режиме global трафик идёт через встроенный селектор GLOBAL, а он по
+	// умолчанию (и из-за store-selected) может указывать на DIRECT → VPN молча
+	// не работает. Направляем GLOBAL на нашу VPN-группу, чтобы «Global» реально
+	// гнал весь трафик через VPN. Best-effort: не валим переключение, если не вышло.
+	if m == "global" {
+		_ = a.selectNode("GLOBAL", forceGroup)
+	}
+	return nil
 }
 
 func (a *apiClient) selectNode(group, name string) error {
