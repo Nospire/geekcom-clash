@@ -90,27 +90,52 @@ DEFAULTS = {
 
 
 # --- 2. Чтение/запись настроек (формат Decky SettingsManager) ----------------
+def _migrate_nested_layer(raw: dict) -> bool:
+    """Decky SettingsManager(name='config') хранит настройки ПЛОСКО (top-level).
+    Старый upstream-формат держал их во вложенном ключе 'settings' — и подписки
+    там осиротели (плагин их не видит). Переносим вложенный слой наверх и
+    удаляем его, чтобы плагин и TUI работали с ОДНИМ списком. Возвращает True,
+    если что-то изменилось (нужно сохранить)."""
+    nested = raw.get("settings")
+    if not isinstance(nested, dict):
+        return False
+    nsubs = nested.get("subscriptions") or {}
+    if nsubs:
+        # top-level имеет приоритет при конфликте имён
+        raw["subscriptions"] = {**nsubs, **(raw.get("subscriptions") or {})}
+    for k in ("current", "dashboard"):
+        if not raw.get(k) and nested.get(k):
+            raw[k] = nested[k]
+    raw.pop("settings", None)
+    return True
+
+
 def load_settings() -> dict:
     try:
         with open(CONFIG_JSON) as f:
             raw = json.load(f)
     except FileNotFoundError:
         raw = {}
-    # Decky может хранить как {"settings": {...}} или плоско — поддержим оба.
-    data = raw.get("settings", raw) if isinstance(raw, dict) else {}
+    if not isinstance(raw, dict):
+        raw = {}
+    # Единый слой с плагином — только top-level. Старый вложенный 'settings'
+    # мигрируем наверх один раз.
+    if _migrate_nested_layer(raw):
+        _atomic_write_json(CONFIG_JSON, raw)
     merged = dict(DEFAULTS)
-    merged.update({k: v for k, v in data.items() if k in DEFAULTS})
+    merged.update({k: v for k, v in raw.items() if k in DEFAULTS})
     merged["_raw"] = raw
     return merged
 
 
 def save_settings(settings: dict) -> None:
-    raw = settings.get("_raw") or {}
-    target = raw["settings"] if isinstance(raw, dict) and "settings" in raw else raw
+    raw = settings.get("_raw")
+    if not isinstance(raw, dict):
+        raw = {}
     for k in DEFAULTS:
         if k in settings:
-            target[k] = settings[k]
-    _atomic_write_json(CONFIG_JSON, raw if raw else {k: settings[k] for k in DEFAULTS})
+            raw[k] = settings[k]
+    _atomic_write_json(CONFIG_JSON, raw)
 
 
 # --- 3. Генерация конфига (переиспользует config.py плагина) -----------------
@@ -120,12 +145,11 @@ def _autoselect_sole_sub(settings: dict) -> None:
     if settings.get("current"):
         return
     raw = settings["_raw"] if isinstance(settings["_raw"], dict) else {}
-    node = raw.get("settings", raw)
-    subs = node.get("subscriptions", {})
+    subs = raw.get("subscriptions") or {}
     if len(subs) == 1:
         name = next(iter(subs))
         settings["current"] = name
-        node["current"] = name
+        raw["current"] = name
         _atomic_write_json(CONFIG_JSON, raw)
 
 
@@ -222,15 +246,15 @@ def controller_ping(settings) -> bool:
 
 # --- 6. Подписки ------------------------------------------------------------
 def cmd_list_subs(settings):
-    subs = settings["_raw"].get("settings", settings["_raw"]).get("subscriptions", {}) \
-        if isinstance(settings["_raw"], dict) else {}
+    raw = settings["_raw"] if isinstance(settings["_raw"], dict) else {}
+    subs = raw.get("subscriptions") or {}
     print(json.dumps({"current": settings.get("current"), "subscriptions": subs},
                      ensure_ascii=False, indent=2))
 
 
 def cmd_set_sub(settings, name):
-    subs = (settings["_raw"].get("settings", settings["_raw"])
-            if isinstance(settings["_raw"], dict) else {}).get("subscriptions", {})
+    raw = settings["_raw"] if isinstance(settings["_raw"], dict) else {}
+    subs = raw.get("subscriptions") or {}
     if name not in subs:
         raise SystemExit(f"Нет такой подписки: {name}")
     settings["current"] = name
@@ -335,7 +359,7 @@ def main():
     elif args.cmd == "set-sub":
         cmd_set_sub(settings, args.name)
     elif args.cmd == "update-sub":
-        subs = (settings["_raw"].get("settings", settings["_raw"])).get("subscriptions", {})
+        subs = (settings["_raw"] if isinstance(settings["_raw"], dict) else {}).get("subscriptions", {})
         url = subs.get(args.name)
         if not url:
             raise SystemExit(f"Нет url для подписки {args.name}")
@@ -351,15 +375,14 @@ def main():
         import utils as plugin_utils
         plugin_utils.init_ssl_context(False)  # плагин делает это в _main; ctl — здесь
         raw = settings["_raw"] if isinstance(settings["_raw"], dict) else {}
-        node = raw.get("settings", raw)
-        subs = node.get("subscriptions", {})
+        subs = raw.get("subscriptions") or {}
         ok, res = plugin_sub.download_sub(args.url, subs)
         if ok:
             name, url = res
             subs[name] = url
-            node["subscriptions"] = subs
-            if not node.get("current"):
-                node["current"] = name
+            raw["subscriptions"] = subs
+            if not raw.get("current"):
+                raw["current"] = name
             _atomic_write_json(CONFIG_JSON, raw)
         print(json.dumps({"ok": ok, "result": res}, ensure_ascii=False))
 

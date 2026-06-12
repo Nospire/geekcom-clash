@@ -37,6 +37,10 @@ class Plugin:
             logger.error(f"initialize_plugin: failed with {e}")
             logger.debug(f"stack trace: {utils.get_traceback(e)}")
 
+        # Миграция осиротевшего вложенного слоя 'settings' (старый формат) в
+        # top-level — чтобы плагин и десктопный TUI видели ОДИН список подписок.
+        self._migrate_legacy_layer()
+
         self._set_default("subscriptions", {})
         self._set_default("secret", utils.rand_thing())
         self._set_default("override_dns", True)
@@ -324,6 +328,8 @@ class Plugin:
         return dashboard_list
 
     async def get_subscription_list(self) -> Dict[str, str]:
+        # Перечитываем с диска: подписку могли добавить из десктопного TUI.
+        self._reload_settings()
         subs: subscription.SubscriptionDict = self.settings.getSetting("subscriptions")
         logger.debug(f"get_subscription_list: {subs}")
         return subs
@@ -413,6 +419,7 @@ class Plugin:
             logger.error(f"edit_subscription: {name} not found")
 
     async def download_subscription(self, url: str) -> Tuple[bool, Optional[str]]:
+        self._reload_settings()
         subs: subscription.SubscriptionDict = self.settings.getSetting("subscriptions")
         ok, data = subscription.download_sub(
             url,
@@ -432,6 +439,7 @@ class Plugin:
             return False, data # type: ignore
 
     async def import_subscription_file(self, file_name: str, file_bytes: bytes) -> Tuple[bool, Optional[str]]:
+        self._reload_settings()
         subs: subscription.SubscriptionDict = self.settings.getSetting("subscriptions")
         ok, data = subscription.import_sub(file_name, file_bytes, subs)
         if ok:
@@ -447,6 +455,7 @@ class Plugin:
 
     async def remove_subscription(self, name: str) -> None:
         logger.info(f"removing subscription: {name}")
+        self._reload_settings()
         subs: subscription.SubscriptionDict = self.settings.getSetting("subscriptions")
         if name in subs:
             subs.pop(name)
@@ -461,6 +470,7 @@ class Plugin:
 
     async def set_current(self, name: str) -> bool:
         logger.debug(f"setting current to: {name}")
+        self._reload_settings()
         if name in self.settings.getSetting("subscriptions"):
             self.settings.setSetting("current", name)
             return True
@@ -468,6 +478,7 @@ class Plugin:
             return False
 
     async def reorder_subscriptions(self, names: List[str]) -> None:
+        self._reload_settings()
         subs: subscription.SubscriptionDict = self.settings.getSetting("subscriptions")
         logger.debug(f"reorder_subscriptions: current: {subs.keys()} target: {names}")
         if set(names) != set(subs.keys()):
@@ -524,3 +535,32 @@ class Plugin:
     def _set_default(self, key: str, value: Any) -> None:
         if self.settings.getSetting(key) is None:
             self.settings.setSetting(key, value)
+
+    def _migrate_legacy_layer(self) -> None:
+        """Старый upstream-формат хранил настройки во вложенном ключе 'settings';
+        текущий плагин (Decky SettingsManager) работает плоско (top-level), из-за
+        чего подписки из старого слоя осиротели и расходились с десктопным TUI.
+        Переносим вложенный слой наверх (top-level в приоритете) и удаляем его."""
+        nested = self.settings.getSetting("settings")
+        if not isinstance(nested, dict):
+            return
+        nsubs = nested.get("subscriptions") or {}
+        merged = {**nsubs, **(self.settings.getSetting("subscriptions") or {})}
+        for key in ("current", "dashboard"):
+            if not self.settings.getSetting(key) and nested.get(key):
+                self.settings.setSetting(key, nested[key])
+        # удаляем осиротевший блок и форсим запись через setSetting подписок
+        self.settings.settings.pop("settings", None)
+        self.settings.setSetting("subscriptions", merged)
+        logger.info("migrated legacy nested 'settings' layer to top-level")
+
+    def _reload_settings(self) -> None:
+        """Перечитать config.json с диска — десктопный TUI/ctl пишет тот же файл
+        в другом процессе, и без перечитывания плагин не увидит его изменений
+        (а на следующем commit ещё и затрёт их). Decky кладёт всё в .settings."""
+        path = os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "config.json")
+        try:
+            with open(path) as f:
+                self.settings.settings = json.load(f)
+        except Exception as e:
+            logger.debug(f"_reload_settings: {e}")
