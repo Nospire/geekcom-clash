@@ -146,7 +146,9 @@ jobs:
       - name: Move nightly tag to current commit
         run: |
           git tag -f nightly "$GITHUB_SHA"
-          git push origin +nightly
+          # явный refs/tags/: иначе при ветке с именем nightly push неоднозначен
+          # (src refspec nightly matches more than one)
+          git push origin -f refs/tags/nightly
 
       - name: Download artifact
         uses: actions/download-artifact@v4
