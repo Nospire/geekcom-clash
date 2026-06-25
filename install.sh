@@ -108,6 +108,11 @@ while [[ $# -gt 0 ]]; do
       shift
       shift
       ;;
+    --component)
+      COMPONENT_ARG=$2
+      shift
+      shift
+      ;;
     --no-privilege)
       SUDO=""
       shift
@@ -206,6 +211,45 @@ if [ -z "${SPECIFIED_VERSION}" ] && [ "$YES_ALL" != "true" ] && [ -e /dev/tty ];
   esac
 fi
 
+# Component selection (all / plugin only / desktop-GUI only).
+APP_DIR="${HOME}/.local/share/geekcom-clash"
+export GCC_WITH_GUI=1
+DESKTOP_ONLY=false
+DESKTOP_SRC="${PLUGIN_DIR}"          # откуда deploy-desktop берёт бинари
+DESKTOP_MIHOMO=""                    # пусто = дефолт deploy-desktop ($PLUGIN_DIR/bin/mihomo)
+MIHOMO_BIN_DIR="${PLUGIN_DIR}/bin"   # куда класть mihomo
+
+function set_component() {
+  case "$1" in
+    plugin)
+      echo "  -> Только плагин Decky"; export GCC_WITH_GUI=0 ;;
+    desktop)
+      echo "  -> Только десктоп-GUI (standalone)"
+      DESKTOP_ONLY=true; WITHOUT_RESTART=true
+      DESKTOP_SRC="${TEMP_DIR}/${PACKAGE}"     # бинари из распакованного зипа (без homebrew/plugins)
+      DESKTOP_MIHOMO="${APP_DIR}/mihomo"
+      MIHOMO_BIN_DIR="${APP_DIR}" ;;
+    *)
+      echo "  -> Всё" ;;
+  esac
+}
+
+if [ -n "$COMPONENT_ARG" ]; then
+  set_component "$COMPONENT_ARG"
+elif [ "$YES_ALL" != "true" ] && [ -e /dev/tty ]; then
+  echo
+  echo "Install components / Что установить:"
+  echo "  1) Всё — плагин Decky (Game Mode) + десктоп-GUI (default)"
+  echo "  2) Только плагин Decky (Game Mode)"
+  echo "  3) Только десктоп-GUI (Desktop Mode, без плагина)"
+  read -p "Choose [1/2/3]: " COMP < /dev/tty || COMP=""
+  case "$COMP" in
+    2) set_component plugin ;;
+    3) set_component desktop ;;
+    *) set_component all ;;
+  esac
+fi
+
 echo "LEGAL NOTICE:"
 echo "By confirming installation, you agree to the terms of the software and service license."
 echo
@@ -238,14 +282,19 @@ if prompt_continue $WITHOUT_PLUGIN; then
   DL_DEST="${TEMP_DIR}/${PACKAGE}.zip"
   wget -O "${DL_DEST}" "${RELEASE_URL}"
   unzip -oq "${DL_DEST}" -d "${TEMP_DIR}"
-  $SUDO rm -rf "${PLUGIN_DIR}"
-  $SUDO mv "${TEMP_DIR}/${PACKAGE}" "${PLUGIN_DIR}"
+  if [ "$DESKTOP_ONLY" != "true" ]; then
+    $SUDO rm -rf "${PLUGIN_DIR}"
+    $SUDO mv "${TEMP_DIR}/${PACKAGE}" "${PLUGIN_DIR}"
+  fi
+  # desktop-only: оставляем распакованным в ${TEMP_DIR}/${PACKAGE} (DESKTOP_SRC)
 fi
 
 echo "Installing Binaries ..."
 if prompt_continue $WITHOUT_BINARY; then
-  BIN_DIR="${PLUGIN_DIR}/bin"
-  $SUDO mkdir -p "${BIN_DIR}"
+  BIN_DIR="${MIHOMO_BIN_DIR}"
+  # desktop-only: mihomo в APP_DIR (user-owned, без sudo), иначе в plugin/bin (root)
+  if [ "$DESKTOP_ONLY" = "true" ]; then BSUDO=""; else BSUDO="$SUDO"; fi
+  $BSUDO mkdir -p "${BIN_DIR}"
 	echo "Installing Mihomo ..."
 
   RELEASE=$(curl -s "${API_BASE_URL}/repos/MetaCubeX/mihomo/releases/latest")
@@ -267,9 +316,9 @@ if prompt_continue $WITHOUT_BINARY; then
   INSTALL_DEST="${BIN_DIR}/mihomo"
   wget -O "${DL_DEST}" "${RELEASE_URL}"
 	gzip -d "${DL_DEST}"
-  $SUDO rm -f "${INSTALL_DEST}"
-  $SUDO mv "${TEMP_DIR}/mihomo" "${INSTALL_DEST}"
-	$SUDO chmod +x "${INSTALL_DEST}"
+  $BSUDO rm -f "${INSTALL_DEST}"
+  $BSUDO mv "${TEMP_DIR}/mihomo" "${INSTALL_DEST}"
+	$BSUDO chmod +x "${INSTALL_DEST}"
 fi
 
 echo "Installing Geo Files ..."
@@ -333,12 +382,17 @@ fi
 
 echo "Installing Desktop App ..."
 if prompt_continue $WITHOUT_DESKTOP; then
-  DEPLOY="${PLUGIN_DIR}/desktop/deploy-desktop.sh"
+  DEPLOY="${DESKTOP_SRC}/desktop/deploy-desktop.sh"
   if [ -f "$DEPLOY" ]; then
-    VER=$(grep '"version"' "${PLUGIN_DIR}/package.json" 2>/dev/null | head -1 | cut -d'"' -f4)
-    GCC_USER="$(id -un)" GCC_PLUGIN_DIR="${PLUGIN_DIR}" GCC_VERSION="${VER}" bash "$DEPLOY" \
-      || echo "  desktop deploy failed (non-fatal)"
-    echo "  Готово: ярлык «Geekcom Clash» на рабочем столе и в меню приложений."
+    VER=$(grep '"version"' "${DESKTOP_SRC}/package.json" 2>/dev/null | head -1 | cut -d'"' -f4)
+    GCC_USER="$(id -un)" GCC_PLUGIN_DIR="${DESKTOP_SRC}" GCC_VERSION="${VER}" \
+      GCC_WITH_GUI="${GCC_WITH_GUI}" ${DESKTOP_MIHOMO:+GCC_MIHOMO="${DESKTOP_MIHOMO}"} \
+      bash "$DEPLOY" || echo "  desktop deploy failed (non-fatal)"
+    if [ "$GCC_WITH_GUI" = "1" ]; then
+      echo "  Готово: ярлык «Geekcom Clash» на рабочем столе и в меню приложений."
+    else
+      echo "  Готово: движок развёрнут (без десктоп-GUI)."
+    fi
   else
     echo "  (desktop files not in this build, skipping)"
   fi
