@@ -29,6 +29,24 @@ FORCE_GROUP = "GEEKCOM-VPN"
 AUTO_NODE = "GEEKCOM-AUTO"
 
 
+def _parse_version(v: str) -> Optional[Tuple[int, ...]]:
+    """'v1.2.3' -> (1, 2, 3). None, если распарсить не удалось."""
+    try:
+        core = v.strip().lstrip("vV").split("-")[0].split("+")[0]
+        return tuple(int(x) for x in core.split("."))
+    except Exception:
+        return None
+
+
+def _is_newer(latest: str, current: str) -> bool:
+    """latest СТРОГО новее current. Если версии парсятся — сравниваем численно
+    (не предлагаем даунгрейд); иначе откатываемся на старое поведение (!=)."""
+    lp, cp = _parse_version(latest), _parse_version(current)
+    if lp is not None and cp is not None:
+        return lp > cp
+    return latest != current
+
+
 class Plugin:
     # Asyncio-compatible long-running code, executed in a task when the plugin is loaded
     async def _main(self):
@@ -599,7 +617,7 @@ class Plugin:
         for res in upgrade.RESOURCE_TYPE_ENUMS:
             current = await self.get_version(res.value)
             latest = await self.get_latest_version(res.value)
-            if current != latest and current.startswith("v") and latest.startswith("v"):
+            if current.startswith("v") and latest.startswith("v") and _is_newer(latest, current):
                 logger.info(f"check_update: {res} {current} => {latest}")
                 await decky.emit("upgrade_notice", f"{name_map[res]}: {current} => {latest}")
 
