@@ -24,6 +24,22 @@ SUDO="sudo"
 # ретраи + докачка. Прозрачно для всех wget ниже по скрипту.
 wget() { command wget --timeout=30 --tries=3 --retry-connrefused --continue "$@"; }
 
+# Зеркало (РФ-достижимое) — пробуем ПЕРВЫМ, fallback на GitHub. GitHub раздаёт
+# файлы релизов с Fastly (185.199.x), который РФ-провайдеры троттлят (крупное
+# душится в ноль). Зеркало (gdt.geekcom.org/dl) синкает те же ассеты по тем же
+# путям — достаточно подменить github.com → зеркало.
+MIRROR_BASE="${OVERRIDE_MIRROR_BASE:-https://gdt.geekcom.org/dl}"
+fetch() {  # fetch <github_url> <dest>  (без sudo; для root-путей качай в TEMP и mv)
+  local url="$1" dest="$2" murl
+  if [ -n "$MIRROR_BASE" ]; then
+    murl="${url/https:\/\/github.com/$MIRROR_BASE}"
+    if [ "$murl" != "$url" ] && command wget -q --timeout=20 --tries=2 -O "$dest" "$murl" 2>/dev/null && [ -s "$dest" ]; then
+      return 0
+    fi
+  fi
+  wget -O "$dest" "$url"
+}
+
 function usage() {
   echo "Usage: install.sh [options]"
   echo "       curl -L ${SCRIPT_URL} | bash [-s -- [options]]"
@@ -285,7 +301,7 @@ if prompt_continue $WITHOUT_PLUGIN; then
   fi
 
   DL_DEST="${TEMP_DIR}/${PACKAGE}.zip"
-  wget -O "${DL_DEST}" "${RELEASE_URL}"
+  fetch "${RELEASE_URL}" "${DL_DEST}"
   unzip -oq "${DL_DEST}" -d "${TEMP_DIR}"
   if [ "$DESKTOP_ONLY" != "true" ]; then
     $SUDO rm -rf "${PLUGIN_DIR}"
@@ -319,7 +335,7 @@ if prompt_continue $WITHOUT_BINARY; then
 
   DL_DEST="${TEMP_DIR}/mihomo.gz"
   INSTALL_DEST="${BIN_DIR}/mihomo"
-  wget -O "${DL_DEST}" "${RELEASE_URL}"
+  fetch "${RELEASE_URL}" "${DL_DEST}"
 	gzip -d "${DL_DEST}"
   $BSUDO rm -f "${INSTALL_DEST}"
   $BSUDO mv "${TEMP_DIR}/mihomo" "${INSTALL_DEST}"
@@ -339,25 +355,25 @@ if prompt_continue $WITHOUT_GEO; then
   RELEASE_URL="${GITHUB_BASE_URL}/MetaCubeX/meta-rules-dat/releases/download/latest/geoip.metadb"
   DEST="${DATA_DIR}/geoip.metadb"
   $SUDO rm -f "${DEST}"
-	$SUDO wget -O "${DEST}" "${RELEASE_URL}"
+	fetch "${RELEASE_URL}" "${TEMP_DIR}/geodl" && $SUDO mv "${TEMP_DIR}/geodl" "${DEST}"
 
   echo "Downloading asn.mmdb ..."
   RELEASE_URL="${GITHUB_BASE_URL}/MetaCubeX/meta-rules-dat/releases/download/latest/GeoLite2-ASN.mmdb"
   DEST="${DATA_DIR}/asn.mmdb"
   $SUDO rm -f "${DEST}"
-	$SUDO wget -O "${DEST}" "${RELEASE_URL}"
+	fetch "${RELEASE_URL}" "${TEMP_DIR}/geodl" && $SUDO mv "${TEMP_DIR}/geodl" "${DEST}"
 
   echo "Downloading geoip.dat ..."
   RELEASE_URL="${GITHUB_BASE_URL}/MetaCubeX/meta-rules-dat/releases/download/latest/geoip.dat"
   DEST="${DATA_DIR}/geoip.dat"
   $SUDO rm -f "${DEST}"
-	$SUDO wget -O "${DEST}" "${RELEASE_URL}"
+	fetch "${RELEASE_URL}" "${TEMP_DIR}/geodl" && $SUDO mv "${TEMP_DIR}/geodl" "${DEST}"
 
   echo "Downloading geosite.dat ..."
   RELEASE_URL="${GITHUB_BASE_URL}/MetaCubeX/meta-rules-dat/releases/download/latest/geosite.dat"
   DEST="${DATA_DIR}/geosite.dat"
   $SUDO rm -f "${DEST}"
-	$SUDO wget -O "${DEST}" "${RELEASE_URL}"
+	fetch "${RELEASE_URL}" "${TEMP_DIR}/geodl" && $SUDO mv "${TEMP_DIR}/geodl" "${DEST}"
 fi
 else
   echo "Geo Files: пропущены (маршрутизация через RULE-SET, китайские .dat не нужны; включить — --with-geo)."
