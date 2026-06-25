@@ -105,12 +105,24 @@ function prompt_continue() {
 }
 
 function clean_all {
-  for dir in "${CLEAN_DIRS[@]}"; do
-    if [ -d "$dir" ]; then
+  # Полное удаление: плагин/данные/настройки + ВЕСЬ десктоп-набор (движок, GUI,
+  # mihomo, лаунчер, стамп в APP_DIR), служба, ярлыки, sudoers/polkit.
+  systemctl --user stop geekcom-clash.service 2>/dev/null || true
+  systemctl --user disable geekcom-clash.service 2>/dev/null || true
+  pkill -f geekcom-clash-gui 2>/dev/null || true
+  for dir in "${CLEAN_DIRS[@]}" "${HOME}/.local/share/geekcom-clash"; do
+    if [ -e "$dir" ]; then
       echo "Removing $dir ..."
       $SUDO rm -rf "$dir"
     fi
   done
+  rm -f "${HOME}/.config/systemd/user/geekcom-clash.service" \
+        "${HOME}/.local/share/applications/geekcom-clash.desktop" \
+        "${HOME}/Desktop/geekcom-clash.desktop" 2>/dev/null || true
+  systemctl --user daemon-reload 2>/dev/null || true
+  $SUDO rm -f /etc/sudoers.d/zz-geekcom-clash /etc/sudoers.d/geekcom-clash \
+              /etc/polkit-1/rules.d/49-geekcom-clash.rules 2>/dev/null || true
+  echo "Удалено: плагин, данные, настройки, десктоп-набор, служба, ярлыки, права."
 }
 
 while [[ $# -gt 0 ]]; do
