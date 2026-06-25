@@ -2,12 +2,17 @@
 # Деплой/обновление десктоп-набора Geekcom Clash — NIGHTLY (Go-движок + Fyne-GUI).
 # Идемпотентен. Зовётся из двух мест (одна логика — нет рассинхрона):
 #   1) плагин при загрузке (main.py _deploy_desktop) — как root, для GCC_USER;
-#   2) вручную с рабочего стола.
+#   2) install.sh / вручную с рабочего стола.
 #
 # Параметры через env:
 #   GCC_USER       — целевой пользователь (по умолчанию текущий)
-#   GCC_PLUGIN_DIR — каталог плагина (по умолчанию ~target/homebrew/plugins/GeekcomClash)
+#   GCC_PLUGIN_DIR — каталог с бинарями (desktop/), по умолч. ~/homebrew/plugins/GeekcomClash
 #   GCC_VERSION    — версия (пишется в стамп, чтобы плагин не редеплоил каждый раз)
+#   GCC_MIHOMO     — путь к mihomo (по умолч. $PLUGIN_DIR/bin/mihomo). Для standalone
+#                    «только GUI» указывают $APP_DIR/mihomo (без homebrew/plugins).
+#   GCC_WITH_GUI   — 1/0: ставить ли Fyne-GUI + ярлык. По умолчанию из маркера
+#                    .no-gui (есть → 0), иначе 1. Явное значение ПЕРСИСТИТСЯ в
+#                    маркер, чтобы авто-деплой плагина уважал «только плагин».
 set -e
 export PATH="/usr/sbin:/usr/bin:/sbin:/bin:${PATH}"
 
@@ -16,7 +21,7 @@ TARGET_HOME=$(getent passwd "$TARGET_USER" | cut -d: -f6)
 PLUGIN_DIR="${GCC_PLUGIN_DIR:-$TARGET_HOME/homebrew/plugins/GeekcomClash}"
 SRC="$PLUGIN_DIR/desktop"
 APP_DIR="$TARGET_HOME/.local/share/geekcom-clash"
-BIN_MIHOMO="$PLUGIN_DIR/bin/mihomo"
+BIN_MIHOMO="${GCC_MIHOMO:-$PLUGIN_DIR/bin/mihomo}"
 SETTINGS_DIR="$TARGET_HOME/homebrew/settings/GeekcomClash"   # config.json (regen читает)
 DATA_DIR="$TARGET_HOME/homebrew/data/GeekcomClash"           # running_config + mihomo -d
 DASH_DIR="$DATA_DIR/dashboard"                               # external-ui
@@ -24,24 +29,38 @@ VERSION="${GCC_VERSION:-unknown}"
 
 [ -d "$SRC" ] || { echo "deploy-desktop: no $SRC, skip"; exit 0; }
 [ -f "$SRC/geekcom-clash" ] || { echo "deploy-desktop: no engine binary in $SRC, skip"; exit 0; }
-[ -f "$SRC/geekcom-clash-gui" ] || { echo "deploy-desktop: no GUI binary in $SRC, skip"; exit 0; }
 
 asuser() { if [ "$(id -un)" = "$TARGET_USER" ]; then "$@"; else runuser -u "$TARGET_USER" -- "$@"; fi; }
 asroot() { if [ "$(id -u)" -eq 0 ]; then "$@"; else sudo "$@"; fi; }
 
-# --- файлы приложения (как пользователь) ---
 asuser mkdir -p "$APP_DIR" "$TARGET_HOME/.local/share/applications" "$TARGET_HOME/Desktop"
-asuser cp -f "$SRC/geekcom-clash" "$SRC/geekcom-clash-gui" "$SRC/logo.png" "$APP_DIR/"
-asuser chmod +x "$APP_DIR/geekcom-clash" "$APP_DIR/geekcom-clash-gui"
 
-# --- launcher GUI: пробрасывает канонический env (settings/data/mihomo) ---
-LAUNCH="$APP_DIR/geekcom-clash-gui-launch"
-printf '#!/usr/bin/bash\nexport GEEKCOM_CLASH_DIR=%q\nexport GEEKCOM_CLASH_MIHOMO=%q\nexport GEEKCOM_CLASH_RESOURCE_DIR=%q\nexec %q "$@"\n' \
-  "$SETTINGS_DIR" "$BIN_MIHOMO" "$DATA_DIR" "$APP_DIR/geekcom-clash-gui" | asuser tee "$LAUNCH" >/dev/null
-asuser chmod +x "$LAUNCH"
+# --- GUI вкл/выкл: env GCC_WITH_GUI перебивает и персистится в маркер .no-gui ---
+MARKER="$APP_DIR/.no-gui"
+if [ -n "$GCC_WITH_GUI" ]; then
+  WITH_GUI="$GCC_WITH_GUI"
+  if [ "$WITH_GUI" = "0" ]; then asuser touch "$MARKER"; else asuser rm -f "$MARKER"; fi
+elif [ -f "$MARKER" ]; then
+  WITH_GUI=0
+else
+  WITH_GUI=1
+fi
 
-# --- ярлык (GUI напрямую, не терминал) ---
-DESKTOP="[Desktop Entry]
+# --- движок + логотип (ВСЕГДА — нужны и плагину, и GUI) ---
+asuser cp -f "$SRC/geekcom-clash" "$SRC/logo.png" "$APP_DIR/"
+asuser chmod +x "$APP_DIR/geekcom-clash"
+
+# --- Fyne-GUI + лаунчер + ярлык (только если WITH_GUI=1) ---
+if [ "$WITH_GUI" = "1" ] && [ -f "$SRC/geekcom-clash-gui" ]; then
+  asuser cp -f "$SRC/geekcom-clash-gui" "$APP_DIR/"
+  asuser chmod +x "$APP_DIR/geekcom-clash-gui"
+
+  LAUNCH="$APP_DIR/geekcom-clash-gui-launch"
+  printf '#!/usr/bin/bash\nexport GEEKCOM_CLASH_DIR=%q\nexport GEEKCOM_CLASH_MIHOMO=%q\nexport GEEKCOM_CLASH_RESOURCE_DIR=%q\nexec %q "$@"\n' \
+    "$SETTINGS_DIR" "$BIN_MIHOMO" "$DATA_DIR" "$APP_DIR/geekcom-clash-gui" | asuser tee "$LAUNCH" >/dev/null
+  asuser chmod +x "$LAUNCH"
+
+  DESKTOP="[Desktop Entry]
 Type=Application
 Name=Geekcom Clash
 GenericName=VPN
@@ -50,9 +69,15 @@ Icon=$APP_DIR/logo.png
 Exec=$LAUNCH
 Terminal=false
 Categories=Network;System;"
-printf '%s\n' "$DESKTOP" | asuser tee "$TARGET_HOME/.local/share/applications/geekcom-clash.desktop" >/dev/null
-printf '%s\n' "$DESKTOP" | asuser tee "$TARGET_HOME/Desktop/geekcom-clash.desktop" >/dev/null
-asuser chmod +x "$TARGET_HOME/.local/share/applications/geekcom-clash.desktop" "$TARGET_HOME/Desktop/geekcom-clash.desktop"
+  printf '%s\n' "$DESKTOP" | asuser tee "$TARGET_HOME/.local/share/applications/geekcom-clash.desktop" >/dev/null
+  printf '%s\n' "$DESKTOP" | asuser tee "$TARGET_HOME/Desktop/geekcom-clash.desktop" >/dev/null
+  asuser chmod +x "$TARGET_HOME/.local/share/applications/geekcom-clash.desktop" "$TARGET_HOME/Desktop/geekcom-clash.desktop"
+else
+  # GUI выключен (только плагин) — убираем приложение/ярлык от прошлых установок
+  asuser rm -f "$APP_DIR/geekcom-clash-gui" "$APP_DIR/geekcom-clash-gui-launch" \
+    "$TARGET_HOME/.local/share/applications/geekcom-clash.desktop" \
+    "$TARGET_HOME/Desktop/geekcom-clash.desktop"
+fi
 
 # --- systemd --user юнит (ExecStartPre = ЭТОТ Go-движок regen, единый источник) ---
 asuser env GEEKCOM_CLASH_DIR="$SETTINGS_DIR" GEEKCOM_CLASH_MIHOMO="$BIN_MIHOMO" \
@@ -75,11 +100,11 @@ fi
 rm -f "$TMP"
 
 # --- polkit (resolved без окна пароля) ---
-asroot install -m 0644 "$SRC/49-geekcom-clash.rules" /etc/polkit-1/rules.d/49-geekcom-clash.rules || true
+[ -f "$SRC/49-geekcom-clash.rules" ] && asroot install -m 0644 "$SRC/49-geekcom-clash.rules" /etc/polkit-1/rules.d/49-geekcom-clash.rules || true
 
 # --- права: дек-юзер должен писать настройки/конфиг ---
 asroot chown -R "$TARGET_USER:$TARGET_USER" "$SETTINGS_DIR" "$DATA_DIR" 2>/dev/null || true
 
 # --- стамп версии ---
 printf '%s\n' "$VERSION" | asuser tee "$APP_DIR/.deployed-version" >/dev/null
-echo "deploy-desktop: ok for $TARGET_USER ($VERSION)"
+echo "deploy-desktop: ok for $TARGET_USER ($VERSION, gui=$WITH_GUI)"
