@@ -8,11 +8,10 @@
 #   GCC_USER       — целевой пользователь (по умолчанию текущий)
 #   GCC_PLUGIN_DIR — каталог с бинарями (desktop/), по умолч. ~/homebrew/plugins/GeekcomClash
 #   GCC_VERSION    — версия (пишется в стамп, чтобы плагин не редеплоил каждый раз)
-#   GCC_MIHOMO     — путь к mihomo (по умолч. $PLUGIN_DIR/bin/mihomo). Для standalone
-#                    «только GUI» указывают $APP_DIR/mihomo (без homebrew/plugins).
-#   GCC_WITH_GUI   — 1/0: ставить ли Fyne-GUI + ярлык. По умолчанию из маркера
-#                    .no-gui (есть → 0), иначе 1. Явное значение ПЕРСИСТИТСЯ в
-#                    маркер, чтобы авто-деплой плагина уважал «только плагин».
+#   GCC_WITH_GUI   — 1/0: ставить ли Fyne-GUI + ярлык (морда Desktop Mode). Без env
+#                    читаем позитивный маркер .gui-enabled (есть → 1, нет → 0).
+#                    SHARED-CORE: mihomo+движок+юнит всегда в APP_DIR; плагин и GUI —
+#                    независимые морды, доустановка одной не сносит другую.
 set -e
 export PATH="/usr/sbin:/usr/bin:/sbin:/bin:${PATH}"
 
@@ -21,7 +20,7 @@ TARGET_HOME=$(getent passwd "$TARGET_USER" | cut -d: -f6)
 PLUGIN_DIR="${GCC_PLUGIN_DIR:-$TARGET_HOME/homebrew/plugins/GeekcomClash}"
 SRC="$PLUGIN_DIR/desktop"
 APP_DIR="$TARGET_HOME/.local/share/geekcom-clash"
-BIN_MIHOMO="${GCC_MIHOMO:-$PLUGIN_DIR/bin/mihomo}"
+BIN_MIHOMO="$APP_DIR/mihomo"   # SHARED-CORE: mihomo всегда в APP_DIR (общий для плагина и GUI)
 SETTINGS_DIR="$TARGET_HOME/homebrew/settings/GeekcomClash"   # config.json (regen читает)
 DATA_DIR="$TARGET_HOME/homebrew/data/GeekcomClash"           # running_config + mihomo -d
 DASH_DIR="$DATA_DIR/dashboard"                               # external-ui
@@ -35,15 +34,18 @@ asroot() { if [ "$(id -u)" -eq 0 ]; then "$@"; else sudo "$@"; fi; }
 
 asuser mkdir -p "$APP_DIR" "$TARGET_HOME/.local/share/applications" "$TARGET_HOME/Desktop"
 
-# --- GUI вкл/выкл: env GCC_WITH_GUI перебивает и персистится в маркер .no-gui ---
-MARKER="$APP_DIR/.no-gui"
+# --- GUI вкл/выкл через ПОЗИТИВНЫЙ маркер .gui-enabled (аддитивность):
+# GCC_WITH_GUI явно → ставит/снимает GUI и персистит маркер. Без env (авто-деплой
+# плагина) → читаем маркер: GUI остаётся в том состоянии, что выбрал юзАер.
+# Свежая установка без маркера → GUI выключен (морду включают явным выбором). ---
+MARKER="$APP_DIR/.gui-enabled"
 if [ -n "$GCC_WITH_GUI" ]; then
   WITH_GUI="$GCC_WITH_GUI"
-  if [ "$WITH_GUI" = "0" ]; then asuser touch "$MARKER"; else asuser rm -f "$MARKER"; fi
+  if [ "$WITH_GUI" = "1" ]; then asuser touch "$MARKER"; else asuser rm -f "$MARKER"; fi
 elif [ -f "$MARKER" ]; then
-  WITH_GUI=0
-else
   WITH_GUI=1
+else
+  WITH_GUI=0
 fi
 
 # --- движок + логотип (ВСЕГДА — нужны и плагину, и GUI) ---

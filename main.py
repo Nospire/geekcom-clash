@@ -349,9 +349,11 @@ class Plugin:
         а setcap-wrapper берёт NOPASSWD дека. env-переменные движка передаём
         внутрь (runuser сбрасывает окружение)."""
         user = os.environ.get("DECKY_USER", "deck")
+        # SHARED-CORE: mihomo лежит рядом с движком в APP_DIR (~/.local/share/
+        # geekcom-clash), общий для плагина и GUI — НЕ в plugin/bin.
         pairs = [
             f"GEEKCOM_CLASH_DIR={decky.DECKY_PLUGIN_SETTINGS_DIR}",
-            f"GEEKCOM_CLASH_MIHOMO={os.path.join(decky.DECKY_PLUGIN_DIR, 'bin', 'mihomo')}",
+            f"GEEKCOM_CLASH_MIHOMO={os.path.join(os.path.dirname(gobin), 'mihomo')}",
             f"GEEKCOM_CLASH_RESOURCE_DIR={decky.DECKY_PLUGIN_RUNTIME_DIR}",
         ]
         return ["runuser", "-u", user, "--", "env", *pairs, gobin, *args]
