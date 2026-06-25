@@ -33,6 +33,8 @@ export const reorderSubscriptions = callable<[string[]], []>("reorder_subscripti
 export const getNodes = callable<[], { members: string[]; current: string; running: boolean }>("get_nodes");
 export const setNode = callable<[string], boolean>("set_node");
 
+export const getEngineVersion = callable<[], string>("get_engine_version");
+
 export const getDashboardList = callable<[], string[]>("get_dashboard_list");
 
 export const getIP = callable<[], string>("get_ip");

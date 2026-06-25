@@ -315,6 +315,24 @@ class Plugin:
                 await asyncio.sleep(0.4)
         logger.warning(f"_apply_node_selection: controller not ready, skipped {node}")
 
+    async def get_engine_version(self) -> str:
+        """Версия Go-движка (geekcom-clash). Пусто, если бинаря нет (релиз без
+        движка) — тогда строка в About не показывается."""
+        import pwd
+        user = os.environ.get("DECKY_USER", "deck")
+        try:
+            home = pwd.getpwnam(user).pw_dir
+        except KeyError:
+            home = f"/home/{user}"
+        gobin = os.path.join(home, ".local", "share", "geekcom-clash", "geekcom-clash")
+        if not os.path.exists(gobin):
+            return ""
+        try:
+            return subprocess.check_output([gobin, "version"], text=True, timeout=5).strip()
+        except Exception as e:
+            logger.error(f"get_engine_version: {e}")
+            return ""
+
     async def kill_core(self) -> bool:
         return CoreController.kill(self._get("timeout"))
 

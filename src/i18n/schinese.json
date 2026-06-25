@@ -87,6 +87,7 @@
     "REINSTALL": "重新安装",
     "UPGRADE_TO": "更新到",
     "INSTALLED_VERSION": "已安装版本",
+    "ENGINE": "引擎",
     "LATEST_VERSION": "最新版本",
     "INSTALL_SUCCESS": "安装成功",
     "INSTALL_FAILURE": "安装失败",

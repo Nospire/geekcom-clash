@@ -11,6 +11,7 @@ import { DescriptionField } from "../components";
 export const About: FC = () => {
   const [version, setVersion] = useState<string>();
   const [coreVersion, setCoreVersion] = useState<string>();
+  const [engineVersion, setEngineVersion] = useState<string>();
 
   useLayoutEffect(() => {
     backend.getVersion(ResourceType.PLUGIN).then((x) => {
@@ -18,6 +19,9 @@ export const About: FC = () => {
     });
     backend.getVersion(ResourceType.CORE).then((x) => {
       setCoreVersion(x);
+    });
+    backend.getEngineVersion().then((x) => {
+      setEngineVersion(x);
     });
   }, []);
   return (
@@ -31,6 +35,11 @@ export const About: FC = () => {
           label={t(L.INSTALLED_VERSION)} focusable >
           {version}
         </Field>
+        {engineVersion && (
+          <Field label={t(L.ENGINE)} focusable>
+            {engineVersion}
+          </Field>
+        )}
         <Field
           icon={<FiGithub style={{ display: "block" }} />}
           label="GitHub"
