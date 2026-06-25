@@ -180,10 +180,32 @@ for req in "${REQUIREMENTS[@]}"; do
   fi
 done
 
+# Channel selection (Release / Nightly). Skipped if --version is given or --yes.
+if [ -z "${SPECIFIED_VERSION}" ] && [ "$YES_ALL" != "true" ]; then
+  echo
+  echo "Install channel / Канал установки:"
+  echo "  1) Release — stable (default / по умолчанию)"
+  echo "  2) Nightly — latest test build / свежая тестовая сборка"
+  read -p "Choose [1/2]: " CHANNEL
+  case "${CHANNEL,,}" in
+    2|n|nightly)
+      SPECIFIED_VERSION="nightly"
+      echo "  -> Nightly"
+      ;;
+    *)
+      echo "  -> Release"
+      ;;
+  esac
+fi
+
 echo "LEGAL NOTICE:"
 echo "By confirming installation, you agree to the terms of the software and service license."
 echo
-echo "Installing $REPO_NAME ..."
+if [ -n "${SPECIFIED_VERSION}" ]; then
+  echo "Installing $REPO_NAME (${SPECIFIED_VERSION}) ..."
+else
+  echo "Installing $REPO_NAME ..."
+fi
 if prompt_continue $WITHOUT_PLUGIN; then
   if [ -z "${SPECIFIED_VERSION}" ]; then
     API_URL="${API_BASE_URL}/repos/${AUTHOR}/${REPO_NAME}/releases/latest"
