@@ -412,30 +412,23 @@ echo "Installing Dashboards ..."
 if prompt_continue $WITHOUT_DASHBOARD; then
   DASHBOARD_DIR="${DATA_DIR}/dashboard"
   $SUDO mkdir -p "${DASHBOARD_DIR}"
-
-	echo "Installing yacd..."
-  DL_DEST="${TEMP_DIR}/yacd.zip"
-  INSTALL_DEST="${DASHBOARD_DIR}/yacd"
-	wget -O "${DL_DEST}" ${GITHUB_BASE_URL}/haishanh/yacd/archive/refs/heads/gh-pages.zip
-	unzip -oq "${DL_DEST}" -d "${TEMP_DIR}"
-  $SUDO rm -rf "${INSTALL_DEST}"
-	$SUDO mv "${TEMP_DIR}/yacd-gh-pages" "${INSTALL_DEST}"
-
-	echo "Installing metacubexd..."
-  DL_DEST="${TEMP_DIR}/metacubexd.zip"
-  INSTALL_DEST="${DASHBOARD_DIR}/metacubexd"
-	wget -O "${DL_DEST}" ${GITHUB_BASE_URL}/MetaCubeX/metacubexd/archive/refs/heads/gh-pages.zip
-	unzip -oq "${DL_DEST}" -d "${TEMP_DIR}"
-  $SUDO rm -rf "${INSTALL_DEST}"
-	$SUDO mv "${TEMP_DIR}/metacubexd-gh-pages" "${INSTALL_DEST}"
-
-	echo "Installing zashboard..."
-  DL_DEST="${TEMP_DIR}/zashboard.zip"
-  INSTALL_DEST="${DASHBOARD_DIR}/zashboard"
-	wget -O "${DL_DEST}" ${GITHUB_BASE_URL}/Zephyruso/zashboard/releases/latest/download/dist-cdn-fonts.zip
-	unzip -oq "${DL_DEST}" -d "${TEMP_DIR}"
-  $SUDO rm -rf "${INSTALL_DEST}"
-	$SUDO mv "${TEMP_DIR}/dist" "${INSTALL_DEST}"
+  # Дашборды (веб-панель) — best-effort: если какой-то не скачался (троттл Fastly),
+  # НЕ валим всю установку. Загрузка через fetch (зеркало первым).
+  set +e
+  install_dash() {  # $1=url  $2=папка-внутри-зипа  $3=целевое-имя
+    local url="$1" inner="$2" name="$3" tmp="${TEMP_DIR}/${name}.zip"
+    echo "Installing ${name}..."
+    if fetch "$url" "$tmp" && unzip -oq "$tmp" -d "${TEMP_DIR}"; then
+      $SUDO rm -rf "${DASHBOARD_DIR}/${name}"
+      $SUDO mv "${TEMP_DIR}/${inner}" "${DASHBOARD_DIR}/${name}"
+    else
+      echo "  ${name} пропущен (не скачался) — не критично, веб-панель опциональна."
+    fi
+  }
+  install_dash "${GITHUB_BASE_URL}/haishanh/yacd/archive/refs/heads/gh-pages.zip" "yacd-gh-pages" "yacd"
+  install_dash "${GITHUB_BASE_URL}/MetaCubeX/metacubexd/archive/refs/heads/gh-pages.zip" "metacubexd-gh-pages" "metacubexd"
+  install_dash "${GITHUB_BASE_URL}/Zephyruso/zashboard/releases/latest/download/dist-cdn-fonts.zip" "dist" "zashboard"
+  set -e
 fi
 
 echo "Installing Desktop App ..."
