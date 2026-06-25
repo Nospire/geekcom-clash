@@ -106,6 +106,9 @@ const Content: FC<{}> = ({ }) => {
   const [clashMode, setClashMode] = useState<ClashMode | null>(null);
   const [traffic, setTraffic] = useState<Traffic | null>(null);
   const [memory, setMemory] = useState<Memory | null>(null);
+  const [nodeOptions, setNodeOptions] = useState<DropdownOption[]>([]);
+  const [currentNode, setCurrentNode] = useState<string | null>(null);
+  const [updatingSub, setUpdatingSub] = useState(false);
 
   const refreshVersions = async () => {
     const _coreVersion = await backend.getVersion(ResourceType.CORE);
@@ -132,6 +135,37 @@ const Content: FC<{}> = ({ }) => {
     const subs = await backend.getSubscriptionList();
     console.log(subs);
     applySubscriptions(subs);
+  };
+
+  const fetchNodes = async () => {
+    try {
+      const { members, current } = await backend.getNodes();
+      setNodeOptions(
+        members.map((name) => ({
+          label: name === "GEEKCOM-AUTO" ? t(L.NODE_AUTO) : name,
+          data: name,
+        }))
+      );
+      setCurrentNode(current);
+    } catch (e) {
+      console.log("fetchNodes failed", e);
+    }
+  };
+
+  const updateCurrentSubscription = async () => {
+    if (!currentSub || updatingSub) return;
+    setUpdatingSub(true);
+    try {
+      const [ok, error] = await backend.updateSubscription(currentSub);
+      toaster.toast({
+        title: ok ? t(L.UPDATE_SUBSCRIPTION_DONE) : t(L.UPDATE_SUBSCRIPTION_FAILED),
+        body: ok ? currentSub : error,
+        icon: <DeckyClashIcon />,
+      });
+      if (ok) fetchNodes();
+    } finally {
+      setUpdatingSub(false);
+    }
   };
 
   const applyDashboards = (boards: string[], save: boolean = true) => {
@@ -212,6 +246,12 @@ const Content: FC<{}> = ({ }) => {
       fetchIP(),
     ]);
   }
+
+  // Обновляем список нод при смене подписки и при вкл/выкл VPN (до включения —
+  // имена из конфига, после — живой список с пингами).
+  useEffect(() => {
+    fetchNodes();
+  }, [currentSub, clashState]);
 
   useEffect(() => {
     if (currentIP && currentDashboard)
@@ -431,6 +471,30 @@ const Content: FC<{}> = ({ }) => {
               <FaPencilAlt />
             </IconButton>
           </RowField>
+        </PanelSectionRow>
+        <PanelSectionRow>
+          <RowField label={t(L.NODE)}>
+            <Dropdown
+              strDefaultLabel={t(L.SELECT_NODE)}
+              rgOptions={nodeOptions}
+              selectedOption={currentNode}
+              onMenuWillOpen={fetchNodes}
+              disabled={currentSub === null}
+              onChange={async (x) => {
+                setCurrentNode(x.data);
+                await backend.setNode(x.data);
+              }}
+            />
+          </RowField>
+        </PanelSectionRow>
+        <PanelSectionRow>
+          <ButtonItem
+            layout="below"
+            disabled={currentSub === null || updatingSub}
+            onClick={updateCurrentSubscription}
+          >
+            {updatingSub ? t(L.LOADING) : t(L.UPDATE_SUBSCRIPTION)}
+          </ButtonItem>
         </PanelSectionRow>
       </PanelSection>
       {clashState && (

@@ -23,6 +23,11 @@ from metadata import PACKAGE_NAME
 from settings import SettingsManager
 import utils
 
+# Имена внедряемых групп (см. override.yaml). GEEKCOM-VPN — select (на неё
+# ссылаются правила), GEEKCOM-AUTO — пункт «Авто (быстрейшая)» внутри неё.
+FORCE_GROUP = "GEEKCOM-VPN"
+AUTO_NODE = "GEEKCOM-AUTO"
+
 
 class Plugin:
     # Asyncio-compatible long-running code, executed in a task when the plugin is loaded
@@ -57,6 +62,7 @@ class Plugin:
         self._set_default("auto_check_update", True)
         self._set_default("auto_update_subscription", False)
         self._set_default("skip_steam_download", False)
+        self._set_default("current_node", None)  # None = «Авто (быстрейшая)»
         self._set_default("log_level", logging.getLevelName(logging.INFO))
 
         level = self._get("log_level")
@@ -203,6 +209,7 @@ class Plugin:
             if status:
                 # Конфиг генерит ExecStartPre юнита (ctl regen) от имени deck.
                 await self.core.start()
+                await self._apply_node_selection()
             else:
                 await self.core.stop()
         except Exception as e:
@@ -216,6 +223,79 @@ class Plugin:
         # настройкам (плагин и TUI используют один geekcom-clash.service).
         logger.debug("restarting core (unit) ...")
         await self.core.restart()
+        await self._apply_node_selection()
+
+    # --- Выбор ноды (группа GEEKCOM-VPN) ------------------------------------
+    def _controller_request(self, method: str, path: str, body: Optional[dict] = None) -> dict:
+        """Запрос к external-controller mihomo (localhost). Блокирующий —
+        вызывать через run_in_executor из async-кода."""
+        port = self._get("controller_port")
+        secret = self._get("secret")
+        data = json.dumps(body).encode() if body is not None else None
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{port}{path}",
+            data=data,
+            method=method,
+            headers={"Authorization": f"Bearer {secret}", "Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            raw = resp.read()
+            return json.loads(raw) if raw else {}
+
+    async def get_nodes(self) -> Dict[str, Any]:
+        """Ноды группы GEEKCOM-VPN + текущий выбор. Работает и до включения VPN
+        (имена нод из yaml текущей подписки), и после (живой API с пингами)."""
+        saved = self._get("current_node", True) or AUTO_NODE
+        if self.core.is_running:
+            try:
+                loop = asyncio.get_event_loop()
+                g = await loop.run_in_executor(
+                    None, lambda: self._controller_request("GET", f"/proxies/{FORCE_GROUP}"))
+                return {"members": g.get("all", []), "current": g.get("now", saved), "running": True}
+            except Exception as e:
+                logger.debug(f"get_nodes: api failed {e}")
+        members = [AUTO_NODE]
+        current_sub = self._get("current", True)
+        if current_sub:
+            try:
+                from ruamel.yaml import YAML
+                with open(subscription.get_path(current_sub)) as f:
+                    doc = YAML().load(f)
+                members += [p.get("name") for p in (doc.get("proxies") or []) if p.get("name")]
+            except Exception as e:
+                logger.debug(f"get_nodes: parse failed {e}")
+        return {"members": members, "current": saved, "running": False}
+
+    async def set_node(self, name: str) -> bool:
+        """Зафиксировать ноду: сохранить в настройках (предвыбор) и, если ядро
+        запущено, применить через API сразу."""
+        self.settings.setSetting("current_node", name)
+        if self.core.is_running:
+            try:
+                loop = asyncio.get_event_loop()
+                await loop.run_in_executor(
+                    None, lambda: self._controller_request("PUT", f"/proxies/{FORCE_GROUP}", {"name": name}))
+            except Exception as e:
+                logger.error(f"set_node: api failed {e}")
+                return False
+        return True
+
+    async def _apply_node_selection(self) -> None:
+        """Применить сохранённый выбор ноды после старта (предвыбор «до
+        включения»). Ждём готовности контроллера несколько секунд."""
+        node = self._get("current_node", True)
+        if not node:
+            return
+        loop = asyncio.get_event_loop()
+        for _ in range(15):
+            try:
+                await loop.run_in_executor(
+                    None, lambda: self._controller_request("PUT", f"/proxies/{FORCE_GROUP}", {"name": node}))
+                logger.info(f"applied saved node selection: {node}")
+                return
+            except Exception:
+                await asyncio.sleep(0.4)
+        logger.warning(f"_apply_node_selection: controller not ready, skipped {node}")
 
     async def kill_core(self) -> bool:
         return CoreController.kill(self._get("timeout"))

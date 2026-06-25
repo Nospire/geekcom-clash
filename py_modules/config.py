@@ -44,11 +44,15 @@ async def generate_config(
         config['rules'] = override_config['skip-steam-rules'] + config['rules']
 
     # Обязательный роутинг системных сервисов через VPN.
-    # Добавляем группу-сборку всех нод и префиксуем правила (наивысший приоритет).
+    # Внедряем GEEKCOM-VPN (select, на неё ссылаются правила) + GEEKCOM-AUTO
+    # (url-test, пункт «Авто» внутри неё) и префиксуем правила (высший приоритет).
     force_group = override_config['force-proxy-group']
+    auto_group = override_config['force-auto-group']
     groups = config.get('proxy-groups') or []
-    if not any(g.get('name') == force_group['name'] for g in groups):
-        config['proxy-groups'] = [force_group] + list(groups)
+    existing = {g.get('name') for g in groups}
+    prepend = [g for g in (force_group, auto_group) if g['name'] not in existing]
+    if prepend:
+        config['proxy-groups'] = prepend + list(groups)
     config['rules'] = override_config['force-proxy-rules'] + config['rules']
 
     config['external-controller'] = f'{"0.0.0.0" if allow_remote_access else "127.0.0.1"}:{controller_port}'

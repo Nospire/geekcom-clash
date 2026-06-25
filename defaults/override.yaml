@@ -64,10 +64,20 @@ skip-steam-rules:
   - DOMAIN-SUFFIX,steamserver.net,DIRECT
 
 force-proxy-group:
-  # Группа, через которую ПРИНУДИТЕЛЬНО гоним системные сервисы.
-  # include-all: true — автоматически включает все ноды из подписки,
-  # url-test — сам выбирает рабочую/быструю. Внедряется в proxy-groups.
+  # Группа, через которую ПРИНУДИТЕЛЬНО гоним системные сервисы и на которую
+  # ссылаются правила. type: select — чтобы ноду можно было выбрать РУКАМИ
+  # (игровой режим/TUI). Первый пункт GEEKCOM-AUTO = авто-выбор быстрейшей и
+  # выбор по умолчанию. include-all: true — добавляет все ноды подписки.
   name: GEEKCOM-VPN
+  type: select
+  include-all: true
+  proxies:
+    - GEEKCOM-AUTO
+
+force-auto-group:
+  # «Авто (быстрейшая)» — url-test по всем нодам. Вложена в GEEKCOM-VPN первым
+  # пунктом. Внедряется в proxy-groups вместе с GEEKCOM-VPN.
+  name: GEEKCOM-AUTO
   type: url-test
   url: http://www.gstatic.com/generate_204
   interval: 300
