@@ -143,11 +143,6 @@ while [[ $# -gt 0 ]]; do
       shift
       shift
       ;;
-    --component)
-      COMPONENT_ARG=$2
-      shift
-      shift
-      ;;
     --no-privilege)
       SUDO=""
       shift
@@ -250,44 +245,26 @@ if [ -z "${SPECIFIED_VERSION}" ] && [ "$YES_ALL" != "true" ] && [ -e /dev/tty ];
   esac
 fi
 
-# Component selection (all / plugin only / desktop-GUI only).
+# v2.0: всегда ставим ВСЁ (плагин Decky + десктоп-GUI). Меню компонентов убрано —
+# оно усложняло и ломало обновления. mihomo/движок/юнит — в APP_DIR (shared-core).
 APP_DIR="${HOME}/.local/share/geekcom-clash"
 export GCC_WITH_GUI=1
-DESKTOP_ONLY=false
-DESKTOP_SRC="${PLUGIN_DIR}"          # откуда deploy-desktop берёт бинари
-DESKTOP_MIHOMO=""                    # пусто = дефолт deploy-desktop ($PLUGIN_DIR/bin/mihomo)
-MIHOMO_BIN_DIR="${PLUGIN_DIR}/bin"   # куда класть mihomo
 
-function set_component() {
-  case "$1" in
-    plugin)
-      echo "  -> Только плагин Decky"; export GCC_WITH_GUI=0 ;;
-    desktop)
-      echo "  -> Только десктоп-GUI (standalone)"
-      DESKTOP_ONLY=true; WITHOUT_RESTART=true
-      DESKTOP_SRC="${TEMP_DIR}/${PACKAGE}"     # бинари из распакованного зипа (без homebrew/plugins)
-      DESKTOP_MIHOMO="${APP_DIR}/mihomo"
-      MIHOMO_BIN_DIR="${APP_DIR}" ;;
-    *)
-      echo "  -> Всё" ;;
-  esac
+# Авто-чистка СТАРОЙ раскладки перед установкой → чистое обновление с любой версии
+# (без перекоса mihomo). НЕ трогаем настройки/подписку (homebrew/settings/*).
+function clean_layout() {
+  echo "Очистка прошлой установки (подписка сохраняется) ..."
+  systemctl --user stop geekcom-clash.service 2>/dev/null || true
+  systemctl --user disable geekcom-clash.service 2>/dev/null || true
+  pkill -f geekcom-clash-gui 2>/dev/null || true
+  $SUDO rm -rf "${PLUGIN_DIR}" "${DATA_DIR}" "${APP_DIR}" 2>/dev/null || true
+  rm -f "${HOME}/.config/systemd/user/geekcom-clash.service" \
+        "${HOME}/.local/share/applications/geekcom-clash.desktop" \
+        "${HOME}/Desktop/geekcom-clash.desktop" 2>/dev/null || true
+  systemctl --user daemon-reload 2>/dev/null || true
+  $SUDO rm -f /etc/sudoers.d/zz-geekcom-clash /etc/sudoers.d/geekcom-clash \
+              /etc/polkit-1/rules.d/49-geekcom-clash.rules 2>/dev/null || true
 }
-
-if [ -n "$COMPONENT_ARG" ]; then
-  set_component "$COMPONENT_ARG"
-elif [ "$YES_ALL" != "true" ] && [ -e /dev/tty ]; then
-  echo
-  echo "Install components / Что установить:"
-  echo "  1) Всё — плагин Decky (Game Mode) + десктоп-GUI (default)"
-  echo "  2) Только плагин Decky (Game Mode)"
-  echo "  3) Только десктоп-GUI (Desktop Mode, без плагина)"
-  read -p "Choose [1/2/3]: " COMP < /dev/tty || COMP=""
-  case "$COMP" in
-    2) set_component plugin ;;
-    3) set_component desktop ;;
-    *) set_component all ;;
-  esac
-fi
 
 echo "LEGAL NOTICE:"
 echo "By confirming installation, you agree to the terms of the software and service license."
@@ -298,6 +275,7 @@ else
   echo "Installing $REPO_NAME ..."
 fi
 if prompt_continue $WITHOUT_PLUGIN; then
+  clean_layout
   if [ -z "${SPECIFIED_VERSION}" ]; then
     API_URL="${API_BASE_URL}/repos/${AUTHOR}/${REPO_NAME}/releases/latest"
     RELEASE=$(curl -s "$API_URL")
@@ -321,19 +299,14 @@ if prompt_continue $WITHOUT_PLUGIN; then
   DL_DEST="${TEMP_DIR}/${PACKAGE}.zip"
   fetch "${RELEASE_URL}" "${DL_DEST}"
   unzip -oq "${DL_DEST}" -d "${TEMP_DIR}"
-  if [ "$DESKTOP_ONLY" != "true" ]; then
-    $SUDO rm -rf "${PLUGIN_DIR}"
-    $SUDO mv "${TEMP_DIR}/${PACKAGE}" "${PLUGIN_DIR}"
-  fi
-  # desktop-only: оставляем распакованным в ${TEMP_DIR}/${PACKAGE} (DESKTOP_SRC)
+  $SUDO rm -rf "${PLUGIN_DIR}"
+  $SUDO mv "${TEMP_DIR}/${PACKAGE}" "${PLUGIN_DIR}"
 fi
 
 echo "Installing Binaries ..."
 if prompt_continue $WITHOUT_BINARY; then
-  BIN_DIR="${MIHOMO_BIN_DIR}"
-  # desktop-only: mihomo в APP_DIR (user-owned, без sudo), иначе в plugin/bin (root)
-  if [ "$DESKTOP_ONLY" = "true" ]; then BSUDO=""; else BSUDO="$SUDO"; fi
-  $BSUDO mkdir -p "${BIN_DIR}"
+  BIN_DIR="${APP_DIR}"   # shared-core: mihomo всегда в APP_DIR (user-owned, без sudo)
+  mkdir -p "${BIN_DIR}"
 	echo "Installing Mihomo ..."
 
   RELEASE=$(curl -s "${API_BASE_URL}/repos/MetaCubeX/mihomo/releases/latest")
@@ -355,9 +328,9 @@ if prompt_continue $WITHOUT_BINARY; then
   INSTALL_DEST="${BIN_DIR}/mihomo"
   fetch "${RELEASE_URL}" "${DL_DEST}"
 	gzip -d "${DL_DEST}"
-  $BSUDO rm -f "${INSTALL_DEST}"
-  $BSUDO mv "${TEMP_DIR}/mihomo" "${INSTALL_DEST}"
-	$BSUDO chmod +x "${INSTALL_DEST}"
+  rm -f "${INSTALL_DEST}"
+  mv "${TEMP_DIR}/mihomo" "${INSTALL_DEST}"
+	chmod +x "${INSTALL_DEST}"
 
   # fail-loud: убедиться, что mihomo реально на месте и не обрезан (≥ 10 МБ).
   # Иначе при троттле получалась «тихая» полу-установка без mihomo → VPN не
@@ -433,17 +406,12 @@ fi
 
 echo "Installing Desktop App ..."
 if prompt_continue $WITHOUT_DESKTOP; then
-  DEPLOY="${DESKTOP_SRC}/desktop/deploy-desktop.sh"
+  DEPLOY="${PLUGIN_DIR}/desktop/deploy-desktop.sh"
   if [ -f "$DEPLOY" ]; then
-    VER=$(grep '"version"' "${DESKTOP_SRC}/package.json" 2>/dev/null | head -1 | cut -d'"' -f4)
-    GCC_USER="$(id -un)" GCC_PLUGIN_DIR="${DESKTOP_SRC}" GCC_VERSION="${VER}" \
-      GCC_WITH_GUI="${GCC_WITH_GUI}" ${DESKTOP_MIHOMO:+GCC_MIHOMO="${DESKTOP_MIHOMO}"} \
+    VER=$(grep '"version"' "${PLUGIN_DIR}/package.json" 2>/dev/null | head -1 | cut -d'"' -f4)
+    GCC_USER="$(id -un)" GCC_PLUGIN_DIR="${PLUGIN_DIR}" GCC_VERSION="${VER}" GCC_WITH_GUI=1 \
       bash "$DEPLOY" || echo "  desktop deploy failed (non-fatal)"
-    if [ "$GCC_WITH_GUI" = "1" ]; then
-      echo "  Готово: ярлык «Geekcom Clash» на рабочем столе и в меню приложений."
-    else
-      echo "  Готово: движок развёрнут (без десктоп-GUI)."
-    fi
+    echo "  Готово: десктоп-GUI — ярлык «Geekcom Clash» на рабочем столе и в меню."
   else
     echo "  (desktop files not in this build, skipping)"
   fi
@@ -453,5 +421,7 @@ echo "Installation complete."
 echo
 echo "Restarting Decky Loader ..."
 if prompt_continue $WITHOUT_RESTART; then
-  $SUDO systemctl restart plugin_loader.service
+  # Без Decky (чистый Desktop Mode) рестарт упадёт — это НЕ страшно: GUI работает.
+  $SUDO systemctl restart plugin_loader.service 2>/dev/null \
+    || echo "  Decky Loader не найден — пропускаю (десктоп-GUI работает в Desktop Mode)."
 fi
