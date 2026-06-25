@@ -181,12 +181,15 @@ for req in "${REQUIREMENTS[@]}"; do
 done
 
 # Channel selection (Release / Nightly). Skipped if --version is given or --yes.
-if [ -z "${SPECIFIED_VERSION}" ] && [ "$YES_ALL" != "true" ]; then
+# ВАЖНО: при `curl ... | bash` stdin занят телом скрипта, поэтому read читаем
+# из /dev/tty — иначе ввод не считывается и канал молча уходит в Release.
+# Если терминала нет (CI/пайп без tty) — пропускаем и берём Release по умолчанию.
+if [ -z "${SPECIFIED_VERSION}" ] && [ "$YES_ALL" != "true" ] && [ -e /dev/tty ]; then
   echo
   echo "Install channel / Канал установки:"
   echo "  1) Release — stable (default / по умолчанию)"
   echo "  2) Nightly — latest test build / свежая тестовая сборка"
-  read -p "Choose [1/2]: " CHANNEL
+  read -p "Choose [1/2]: " CHANNEL < /dev/tty || CHANNEL=""
   case "${CHANNEL,,}" in
     2|n|nightly)
       SPECIFIED_VERSION="nightly"
