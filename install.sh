@@ -340,6 +340,17 @@ if prompt_continue $WITHOUT_BINARY; then
   $BSUDO rm -f "${INSTALL_DEST}"
   $BSUDO mv "${TEMP_DIR}/mihomo" "${INSTALL_DEST}"
 	$BSUDO chmod +x "${INSTALL_DEST}"
+
+  # fail-loud: убедиться, что mihomo реально на месте и не обрезан (≥ 10 МБ).
+  # Иначе при троттле получалась «тихая» полу-установка без mihomo → VPN не
+  # включался (FileNotFoundError у тестера). Лучше упасть внятно, чем молча.
+  sz=$(stat -c%s "${INSTALL_DEST}" 2>/dev/null || echo 0)
+  if [ ! -s "${INSTALL_DEST}" ] || [ "${sz}" -lt 10000000 ]; then
+    echo "" >&2
+    echo "ОШИБКА: mihomo не докачался (${INSTALL_DEST}, ${sz} б)." >&2
+    echo "Скорее всего сеть/троттлинг прервали загрузку. Запустите установку ещё раз." >&2
+    exit 1
+  fi
 fi
 
 # Geo-файлы (MetaCubeX, ~43 МБ) по умолчанию НЕ ставим: наш конфиг маршрутит
