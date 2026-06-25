@@ -34,6 +34,37 @@ func Defaults() Config {
 	}
 }
 
+// RegisterSub добавляет подписку в config.json round-trip-безопасно: грузим
+// весь файл как map (сохраняя чужие ключи плагина — log_level, timeout и пр.),
+// дописываем подписку и, если current пуст, делаем её текущей.
+func RegisterSub(name, url string) error {
+	raw := map[string]any{}
+	if data, err := os.ReadFile(paths.ConfigJSON()); err == nil {
+		_ = json.Unmarshal(data, &raw)
+	}
+	subs, _ := raw["subscriptions"].(map[string]any)
+	if subs == nil {
+		subs = map[string]any{}
+	}
+	subs[name] = url
+	raw["subscriptions"] = subs
+	if cur, _ := raw["current"].(string); cur == "" {
+		raw["current"] = name
+	}
+	data, err := json.MarshalIndent(raw, "", "  ")
+	if err != nil {
+		return err
+	}
+	// 0644 ОБЯЗАТЕЛЬНО: плагин пишет от root, а дек-юзер (TUI/ctl, юнит
+	// ExecStartPre=regen) должен МОЧЬ ПРОЧИТАТЬ config.json. Запись дек-юзера
+	// идёт через rename в его каталоге — работает поверх любого владельца.
+	tmp := paths.ConfigJSON() + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+		return err
+	}
+	return os.Rename(tmp, paths.ConfigJSON())
+}
+
 // Load читает config.json из канонического каталога. Отсутствие файла — не
 // ошибка (вернутся дефолты).
 func Load() (Config, error) {

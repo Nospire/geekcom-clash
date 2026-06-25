@@ -315,9 +315,8 @@ class Plugin:
                 await asyncio.sleep(0.4)
         logger.warning(f"_apply_node_selection: controller not ready, skipped {node}")
 
-    async def get_engine_version(self) -> str:
-        """Версия Go-движка (geekcom-clash). Пусто, если бинаря нет (релиз без
-        движка) — тогда строка в About не показывается."""
+    def _engine_bin(self) -> Optional[str]:
+        """Путь к Go-движку (geekcom-clash). None, если не задеплоен."""
         import pwd
         user = os.environ.get("DECKY_USER", "deck")
         try:
@@ -325,7 +324,24 @@ class Plugin:
         except KeyError:
             home = f"/home/{user}"
         gobin = os.path.join(home, ".local", "share", "geekcom-clash", "geekcom-clash")
-        if not os.path.exists(gobin):
+        return gobin if os.path.exists(gobin) else None
+
+    def _engine_env(self) -> dict:
+        """Окружение для Go-движка: каталог данных, бинарь mihomo, resource-dir.
+        Чистим LD_* (decky инжектит своё)."""
+        env = dict(os.environ)
+        env.pop("LD_LIBRARY_PATH", None)
+        env.pop("LD_PRELOAD", None)
+        env["GEEKCOM_CLASH_DIR"] = decky.DECKY_PLUGIN_SETTINGS_DIR
+        env["GEEKCOM_CLASH_MIHOMO"] = os.path.join(decky.DECKY_PLUGIN_DIR, "bin", "mihomo")
+        env["GEEKCOM_CLASH_RESOURCE_DIR"] = decky.DECKY_PLUGIN_RUNTIME_DIR
+        return env
+
+    async def get_engine_version(self) -> str:
+        """Версия Go-движка. Пусто, если бинаря нет (релиз без движка) — тогда
+        строка в About не показывается."""
+        gobin = self._engine_bin()
+        if not gobin:
             return ""
         try:
             return subprocess.check_output([gobin, "version"], text=True, timeout=5).strip()
@@ -536,6 +552,27 @@ class Plugin:
 
     async def download_subscription(self, url: str) -> Tuple[bool, Optional[str]]:
         self._reload_settings()
+        gobin = self._engine_bin()
+        if gobin:
+            # NIGHTLY: добавление подписки делает Go-движок (парс/скачивание/
+            # валидация/сохранение/регистрация в config.json).
+            try:
+                loop = asyncio.get_event_loop()
+                r = await loop.run_in_executor(None, functools.partial(
+                    subprocess.run, [gobin, "add-sub", url], env=self._engine_env(),
+                    capture_output=True, text=True, timeout=60))
+                data = json.loads((r.stdout or "").strip().splitlines()[-1])
+            except Exception as e:
+                logger.error(f"download_subscription (engine): {e}")
+                return False, str(e)
+            self._reload_settings()  # Go сам записал подписку в config.json
+            if data.get("ok"):
+                name = data["result"][0]
+                await decky.emit("sub_update", name)
+                return True, None
+            return False, str(data.get("result"))
+
+        # fallback: Python-движок (релиз без Go-бинаря)
         subs: subscription.SubscriptionDict = self.settings.getSetting("subscriptions")
         ok, data = subscription.download_sub(
             url,

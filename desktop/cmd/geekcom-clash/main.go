@@ -8,6 +8,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -15,6 +16,7 @@ import (
 	"geekcom-clash/internal/config"
 	"geekcom-clash/internal/engine"
 	"geekcom-clash/internal/paths"
+	"geekcom-clash/internal/subscription"
 )
 
 func main() {
@@ -26,6 +28,8 @@ func main() {
 	switch os.Args[1] {
 	case "regen":
 		err = cmdRegen(os.Args[2:])
+	case "add-sub":
+		err = cmdAddSub(os.Args[2:])
 	case "paths":
 		cmdPaths()
 	case "version", "-v", "--version":
@@ -74,6 +78,34 @@ func cmdRegen(args []string) error {
 	}
 	fmt.Println(newPath)
 	return nil
+}
+
+// cmdAddSub: добавить подписку (share-ссылка/base64/http-URL). Печатает JSON
+// {"ok":bool,"result":...} как Python-ctl. Ошибка добавления — это ok:false,
+// exit 0 (контракт по JSON); инфраструктурная ошибка — exit 1.
+func cmdAddSub(args []string) error {
+	if len(args) < 1 {
+		return fmt.Errorf("usage: geekcom-clash add-sub <url>")
+	}
+	c, err := config.Load()
+	if err != nil {
+		return err
+	}
+	res, addErr := subscription.Add(args[0], c.Subscriptions)
+	if addErr != nil {
+		printJSON(map[string]any{"ok": false, "result": addErr.Error()})
+		return nil
+	}
+	if err := config.RegisterSub(res.Name, res.URL); err != nil {
+		return err
+	}
+	printJSON(map[string]any{"ok": true, "result": []string{res.Name, res.URL}})
+	return nil
+}
+
+func printJSON(v any) {
+	b, _ := json.Marshal(v)
+	fmt.Println(string(b))
 }
 
 func cmdPaths() {
