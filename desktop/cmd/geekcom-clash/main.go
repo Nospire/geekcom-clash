@@ -18,6 +18,7 @@ import (
 	"geekcom-clash/internal/paths"
 	"geekcom-clash/internal/service"
 	"geekcom-clash/internal/subscription"
+	"geekcom-clash/internal/webimport"
 )
 
 func main() {
@@ -37,11 +38,23 @@ func main() {
 		err = service.Stop()
 	case "restart":
 		err = service.Restart()
+	case "install-unit":
+		err = service.InstallUnit()
 	case "status":
 		if service.IsActive() {
 			fmt.Println("active")
 		} else {
 			fmt.Println("inactive")
+		}
+	case "webimport":
+		// ЕДИНЫЙ модуль импорта (тот же, что в GUI). Плагин шеллит сюда:
+		// печатаем URL для телефона в stdout и блокируемся до kill.
+		u, _, e := webimport.Start(func(name string) { fmt.Println("added:", name) })
+		if e != nil {
+			err = e
+		} else {
+			fmt.Println(u)
+			select {}
 		}
 	case "paths":
 		cmdPaths()
@@ -129,5 +142,5 @@ func cmdPaths() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: geekcom-clash <regen|add-sub|start|stop|restart|status|paths|version>")
+	fmt.Fprintln(os.Stderr, "usage: geekcom-clash <regen|add-sub|start|stop|restart|status|install-unit|webimport|paths|version>")
 }
