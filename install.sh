@@ -33,8 +33,14 @@ fetch() {  # fetch <github_url> <dest>  (без sudo; для root-путей к�
   local url="$1" dest="$2" murl
   if [ -n "$MIRROR_BASE" ]; then
     murl="${url/https:\/\/github.com/$MIRROR_BASE}"
-    if [ "$murl" != "$url" ] && command wget -q --timeout=20 --tries=2 -O "$dest" "$murl" 2>/dev/null && [ -s "$dest" ]; then
-      return 0
+    if [ "$murl" != "$url" ]; then
+      echo "  Загрузка с зеркала: $(basename "$dest") ..."
+      # -q --show-progress: только прогресс-бар (без verbose), чтобы не выглядело
+      # как зависон при тихой загрузке больших файлов (zip/mihomo).
+      if command wget -q --show-progress --timeout=20 --tries=2 -O "$dest" "$murl" && [ -s "$dest" ]; then
+        return 0
+      fi
+      echo "  Зеркало недоступно, пробую GitHub ..."
     fi
   fi
   wget -O "$dest" "$url"
