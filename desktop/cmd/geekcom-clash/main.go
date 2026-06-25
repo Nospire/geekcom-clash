@@ -16,6 +16,7 @@ import (
 	"geekcom-clash/internal/config"
 	"geekcom-clash/internal/engine"
 	"geekcom-clash/internal/paths"
+	"geekcom-clash/internal/service"
 	"geekcom-clash/internal/subscription"
 )
 
@@ -30,6 +31,18 @@ func main() {
 		err = cmdRegen(os.Args[2:])
 	case "add-sub":
 		err = cmdAddSub(os.Args[2:])
+	case "start":
+		err = service.Start()
+	case "stop":
+		err = service.Stop()
+	case "restart":
+		err = service.Restart()
+	case "status":
+		if service.IsActive() {
+			fmt.Println("active")
+		} else {
+			fmt.Println("inactive")
+		}
 	case "paths":
 		cmdPaths()
 	case "version", "-v", "--version":
@@ -116,5 +129,5 @@ func cmdPaths() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: geekcom-clash <regen|paths|version>")
+	fmt.Fprintln(os.Stderr, "usage: geekcom-clash <regen|add-sub|start|stop|restart|status|paths|version>")
 }
