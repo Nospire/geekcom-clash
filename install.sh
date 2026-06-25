@@ -35,7 +35,8 @@ function usage() {
   echo "      --no-privilege          Run without sudo"
   echo "      --without-plugin        Skip installing ${PACKAGE} plugin"
   echo "      --without-binary        Skip installing Mihomo"
-  echo "      --without-geo           Skip installing geo files"
+  echo "      --with-geo              Install MetaCubeX geo files (.dat, ~43MB) — по умолчанию НЕ ставятся"
+  echo "      --without-geo           (legacy) Skip geo files explicitly"
   echo "      --without-dashboard     Skip installing dashboards"
   echo "      --without-desktop       Skip installing the desktop app (TUI/launcher)"
   echo "      --without-restart       Skip restarting Decky Loader"
@@ -127,6 +128,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --without-geo)
       WITHOUT_GEO=true
+      shift
+      ;;
+    --with-geo)
+      WITH_GEO=true
       shift
       ;;
     --without-dashboard)
@@ -321,6 +326,11 @@ if prompt_continue $WITHOUT_BINARY; then
 	$BSUDO chmod +x "${INSTALL_DEST}"
 fi
 
+# Geo-файлы (MetaCubeX, ~43 МБ) по умолчанию НЕ ставим: наш конфиг маршрутит
+# через RULE-SET rule-providers (ru-domains/ru-geoip/rknasnblock и пр.), а не
+# через GEOIP/GEOSITE — китайские .dat ему не нужны (мёртвый груз от DeckyClash).
+# Включить можно явно: --with-geo (если у тебя кастомный конфиг с GEOIP/GEOSITE).
+if [ "$WITH_GEO" = "true" ]; then
 echo "Installing Geo Files ..."
 if prompt_continue $WITHOUT_GEO; then
   $SUDO mkdir -p "${DATA_DIR}"
@@ -348,6 +358,9 @@ if prompt_continue $WITHOUT_GEO; then
   DEST="${DATA_DIR}/geosite.dat"
   $SUDO rm -f "${DEST}"
 	$SUDO wget -O "${DEST}" "${RELEASE_URL}"
+fi
+else
+  echo "Geo Files: пропущены (маршрутизация через RULE-SET, китайские .dat не нужны; включить — --with-geo)."
 fi
 
 echo "Installing Dashboards ..."
