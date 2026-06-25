@@ -153,30 +153,30 @@ def _autoselect_sole_sub(settings: dict) -> None:
         _atomic_write_json(CONFIG_JSON, raw)
 
 
+# NIGHTLY: генерацию running_config делает Go-движок (geekcom-clash regen).
+# Бинарь читает config.json + подписку из GEEKCOM_CLASH_DIR, пишет в --out.
+# Остальные параметры (secret/dns/mode/...) он берёт из того же config.json.
+GO_ENGINE = os.path.join(_HERE, "geekcom-clash")
+
+
 def regen(settings: dict) -> str:
     _autoselect_sole_sub(settings)
     current = settings.get("current")
     if not current:
         raise SystemExit("Подписка не выбрана: добавьте подписку (＋) и выберите её")
-    # путь подписки тот же, что у плагина (subscription.get_path), без импорта модуля
     ori = os.path.join(decky.DECKY_PLUGIN_SETTINGS_DIR, "subscriptions", current + ".yaml")
     if not os.path.exists(ori):
         raise SystemExit(f"Файл подписки не найден: {ori}")
     os.makedirs(decky.DECKY_PLUGIN_RUNTIME_DIR, exist_ok=True)
-    enhanced = plugin_config.EnhancedMode(settings["enhanced_mode"])
-    asyncio.run(
-        plugin_config.generate_config(
-            ori_path=ori,
-            new_path=RUNNING_CONFIG,
-            secret=settings["secret"],
-            override_dns=settings["override_dns"],
-            enhanced_mode=enhanced,
-            controller_port=settings["controller_port"],
-            allow_remote_access=settings["allow_remote_access"],
-            dashboard_dir=str(plugin_dashboard.DASHBOARD_DIR),
-            dashboard=settings.get("dashboard"),
-            skip_steam_download=settings["skip_steam_download"],
-        )
+    if not os.path.exists(GO_ENGINE):
+        raise SystemExit(f"Go-движок не найден: {GO_ENGINE}")
+    env = dict(os.environ)
+    env["GEEKCOM_CLASH_DIR"] = decky.DECKY_PLUGIN_SETTINGS_DIR
+    subprocess.run(
+        [GO_ENGINE, "regen",
+         "--out", RUNNING_CONFIG,
+         "--dashboard-dir", str(plugin_dashboard.DASHBOARD_DIR)],
+        env=env, check=True,
     )
     return RUNNING_CONFIG
 
