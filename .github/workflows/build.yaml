@@ -7,6 +7,7 @@ on:
     branches:
       - main
       - dev
+      - nightly
   pull_request:
 
 permissions:
@@ -15,7 +16,10 @@ permissions:
 jobs:
   build_plugin:
     name: Build Plugin
-    runs-on: ubuntu-latest
+    # ubuntu-22.04 (glibc 2.35) НАМЕРЕННО: GUI с CGO динамически линкует glibc;
+    # на ubuntu-latest (2.39) бинарь не запустится на SteamOS Деки (glibc ~2.36).
+    # 2.35 ≤ Деки → запускается. Движок CGO=0 (статика) — ему всё равно.
+    runs-on: ubuntu-22.04
     permissions:
       contents: write
     steps:
@@ -58,12 +62,20 @@ jobs:
         with:
           go-version: '1.23'
 
-      - name: Build desktop TUI
+      - name: Install GUI build deps (OpenGL/X11 для Fyne CGO)
         run: |
-          VERSION=$(grep '"version"' package.json | head -1 | cut -d'"' -f4)
-          cd tui/geekcom-clash-tui
+          sudo apt-get update
+          sudo apt-get install -y gcc libgl1-mesa-dev xorg-dev libxkbcommon-dev
+
+      - name: Build desktop engine + GUI
+        run: |
+          cd desktop
+          # Движок — чистый Go (статика, без glibc-зависимости)
           GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath \
-            -ldflags="-s -w -X main.version=${VERSION}" -o geekcom-clash-tui .
+            -ldflags="-s -w" -o geekcom-clash ./cmd/geekcom-clash
+          # GUI (Fyne) — нужен CGO + GL/X11; нативная сборка под linux/amd64
+          CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -trimpath \
+            -ldflags="-s -w" -o geekcom-clash-gui ./cmd/geekcom-clash-gui
 
       - name: Collect files
         run: |
@@ -72,9 +84,10 @@ jobs:
           rm -rf release/GeekcomClash/defaults/external/.git
           cp main.py plugin.json package.json LICENSE release/GeekcomClash/
           mkdir -p release/GeekcomClash/desktop
-          cp tui/geekcom-clash-ctl tui/decky_shim.py tui/49-geekcom-clash.rules tui/deploy-desktop.sh assets/logo.png release/GeekcomClash/desktop/
-          cp tui/geekcom-clash-tui/geekcom-clash-tui release/GeekcomClash/desktop/
-          chmod +x release/GeekcomClash/desktop/geekcom-clash-ctl release/GeekcomClash/desktop/geekcom-clash-tui release/GeekcomClash/desktop/deploy-desktop.sh
+          # NIGHTLY-набор: Go-движок + Fyne-GUI + наш deploy-скрипт и ассеты
+          cp desktop/deploy-desktop.sh desktop/49-geekcom-clash.rules desktop/logo.png release/GeekcomClash/desktop/
+          cp desktop/geekcom-clash desktop/geekcom-clash-gui release/GeekcomClash/desktop/
+          chmod +x release/GeekcomClash/desktop/geekcom-clash release/GeekcomClash/desktop/geekcom-clash-gui release/GeekcomClash/desktop/deploy-desktop.sh
           cd release
           zip -r GeekcomClash.zip GeekcomClash
           cd ..
@@ -122,7 +135,7 @@ jobs:
 
   nightly:
     name: Publish nightly
-    if: ${{ github.ref == 'refs/heads/dev' }}
+    if: ${{ github.ref == 'refs/heads/nightly' || github.ref == 'refs/heads/dev' }}
     runs-on: ubuntu-latest
     needs: build_plugin
     steps:
