@@ -19,6 +19,11 @@ CLEAN_DIRS=(
 )
 SUDO="sudo"
 
+# wget без read-таймаута виснет НАМЕРТВО, если CDN (release-assets) застопорится
+# на середине файла. Оборачиваем все вызовы: таймаут на соединение/чтение +
+# ретраи + докачка. Прозрачно для всех wget ниже по скрипту.
+wget() { command wget --timeout=30 --tries=3 --retry-connrefused --continue "$@"; }
+
 function usage() {
   echo "Usage: install.sh [options]"
   echo "       curl -L ${SCRIPT_URL} | bash [-s -- [options]]"
