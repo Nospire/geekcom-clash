@@ -189,7 +189,14 @@ class Plugin:
                 home = pwd.getpwnam(user).pw_dir
             except KeyError:
                 home = f"/home/{user}"
-            version = str(decky.DECKY_PLUGIN_VERSION)
+            # Версию берём из package.json (её бампит CI), а НЕ из
+            # DECKY_PLUGIN_VERSION: после оффлайн-mv Decky может держать в реестре
+            # старую версию → стамп ложно совпадёт и автодеплой пропустится.
+            try:
+                with open(os.path.join(decky.DECKY_PLUGIN_DIR, "package.json")) as pf:
+                    version = str(json.load(pf).get("version") or decky.DECKY_PLUGIN_VERSION)
+            except Exception:
+                version = str(decky.DECKY_PLUGIN_VERSION)
             stamp = os.path.join(home, ".local", "share", "geekcom-clash", ".deployed-version")
             try:
                 with open(stamp) as f:
