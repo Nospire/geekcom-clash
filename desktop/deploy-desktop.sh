@@ -34,18 +34,36 @@ asroot() { if [ "$(id -u)" -eq 0 ]; then "$@"; else sudo "$@"; fi; }
 
 asuser mkdir -p "$APP_DIR" "$TARGET_HOME/.local/share/applications" "$TARGET_HOME/Desktop"
 
-# --- GUI вкл/выкл через ПОЗИТИВНЫЙ маркер .gui-enabled (аддитивность):
-# GCC_WITH_GUI явно → ставит/снимает GUI и персистит маркер. Без env (авто-деплой
-# плагина) → читаем маркер: GUI остаётся в том состоянии, что выбрал юзАер.
-# Свежая установка без маркера → GUI выключен (морду включают явным выбором). ---
-MARKER="$APP_DIR/.gui-enabled"
+# --- SHARED-CORE миграция: mihomo ОБЯЗАН лежать в APP_DIR. При обновлении через
+# плагин (Decky «Manage Upgrades») со старой раскладки, где mihomo был в plugin/bin,
+# сюда его никто не переносил → юнит (ExecStart=APP_DIR/mihomo) падал, VPN не стартовал.
+# Самолечение: если в APP_DIR нет — переносим из старого места. ---
+if [ ! -f "$BIN_MIHOMO" ]; then
+  for OLD in "$PLUGIN_DIR/bin/mihomo" "$SRC/mihomo" "$APP_DIR/bin/mihomo"; do
+    if [ -f "$OLD" ]; then
+      asuser cp -f "$OLD" "$BIN_MIHOMO" && asuser chmod +x "$BIN_MIHOMO"
+      echo "deploy-desktop: mihomo перенесён из $OLD → APP_DIR"
+      break
+    fi
+  done
+  [ -f "$BIN_MIHOMO" ] || echo "deploy-desktop: ВНИМАНИЕ — mihomo не найден; переустановите через install.sh"
+fi
+
+# --- чистка хлама эпохи TUI (v1.x): старый Bubble Tea TUI, ctl, python-shim ---
+asuser rm -rf "$APP_DIR/geekcom-clash-tui" "$APP_DIR/geekcom-clash-ctl" \
+  "$APP_DIR/decky_shim.py" "$APP_DIR/__pycache__" 2>/dev/null || true
+
+# --- GUI: в v2 десктоп-морда включена ПО УМОЛЧАНИЮ (ключевая фича 2.0). Явный
+# GCC_WITH_GUI=0 выключает и персистит негативный маркер .gui-disabled (переживает
+# авто-деплой плагина). Ярлык в Game Mode безвреден — его там не видно. ---
+MARKER_OFF="$APP_DIR/.gui-disabled"
 if [ -n "$GCC_WITH_GUI" ]; then
   WITH_GUI="$GCC_WITH_GUI"
-  if [ "$WITH_GUI" = "1" ]; then asuser touch "$MARKER"; else asuser rm -f "$MARKER"; fi
-elif [ -f "$MARKER" ]; then
-  WITH_GUI=1
-else
+  if [ "$WITH_GUI" = "1" ]; then asuser rm -f "$MARKER_OFF"; else asuser touch "$MARKER_OFF"; fi
+elif [ -f "$MARKER_OFF" ]; then
   WITH_GUI=0
+else
+  WITH_GUI=1
 fi
 
 # --- движок + логотип (ВСЕГДА — нужны и плагину, и GUI) ---
