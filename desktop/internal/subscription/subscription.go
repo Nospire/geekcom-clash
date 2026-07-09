@@ -106,11 +106,18 @@ func addFromURL(url string, existing map[string]string) (Result, error) {
 }
 
 // validate — mihomo -t. Бинарь и resource-dir берём из env (плагин их знает).
-// Если бинаря нет — пропускаем (движок без mihomo).
+// Если бинаря нет (env не задан ИЛИ файл отсутствует) — валидацию ПРОПУСКАЕМ:
+// подписка сама по себе валидна, а отсутствие ядра — отдельная проблема (лечится
+// переустановкой/самолечением), блокировать импорт из-за неё нельзя. Раньше при
+// отсутствии mihomo exec падал с пустым выводом → пользователь видел загадочное
+// «конфиг невалиден:» без текста.
 func validate(configPath string) error {
 	bin := os.Getenv("GEEKCOM_CLASH_MIHOMO")
 	if bin == "" {
 		return nil
+	}
+	if _, statErr := os.Stat(bin); statErr != nil {
+		return nil // mihomo не установлен — пропускаем (импорт не должен падать)
 	}
 	d := os.Getenv("GEEKCOM_CLASH_RESOURCE_DIR")
 	if d == "" {
@@ -118,7 +125,14 @@ func validate(configPath string) error {
 	}
 	out, err := exec.Command(bin, "-t", "-f", configPath, "-d", d).CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("%s", strings.TrimSpace(lastLine(string(out))))
+		msg := strings.TrimSpace(lastLine(string(out)))
+		if msg == "" {
+			msg = strings.TrimSpace(string(out))
+		}
+		if msg == "" {
+			msg = err.Error() // не оставляем сообщение пустым (напр. exec-ошибка)
+		}
+		return fmt.Errorf("%s", msg)
 	}
 	return nil
 }
