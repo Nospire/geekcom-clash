@@ -3,19 +3,28 @@
 
 dns-override:
   # dns config to override if dns-override is enabled
-  # Пресет DNS под РФ/СНГ: DoH-резолверы, устойчивые к DPI, вместо китайских.
+  # Пресет DNS под РФ: основной резолвер ЧЕРЕЗ ТУННЕЛЬ, DIRECT-трафик — через РФ-DNS.
+  # ФИКС бага «в режиме Правила пропадает вся связь»: раньше nameserver (cloudflare-
+  # dns.com/dns.google) резолвился НАПРЯМУЮ мимо туннеля → под DPI DIRECT/IP-правила
+  # умирали на резолве. Теперь DoH идёт по IP через GEEKCOM-VPN (провайдер/DPI не видят).
   enable: true
   ipv6: false
   default-nameserver:
-    # bootstrap по IP (без DoH) — чтобы резолвить сами DoH-хосты
-    - 1.1.1.1
-    - 8.8.8.8
-    - 9.9.9.9
+    # bootstrap: РФ-доступный резолвер по IP (адреса ниже уже IP, DoH им не нужен)
+    - 77.88.8.8
+    - 77.88.8.1
   nameserver:
-    - https://cloudflare-dns.com/dns-query
-    - https://dns.google/dns-query
-    - https://dns.quad9.net/dns-query
-    - tls://1.1.1.1:853
+    # DoH ПО IP ЧЕРЕЗ ТУННЕЛЬ (#GEEKCOM-VPN) — работает в любом режиме, DPI не видит
+    - https://1.1.1.1/dns-query#GEEKCOM-VPN
+    - https://8.8.8.8/dns-query#GEEKCOM-VPN
+  proxy-server-nameserver:
+    # домен VPN-сервера резолвим НАПРЯМУЮ (через туннель нельзя — курица/яйцо), через Яндекс
+    - 77.88.8.8
+    - 77.88.8.1
+  direct-nameserver:
+    # DIRECT-трафик (российские сайты) — через РФ-DNS: получают РФ-CDN, живут даже если VPN лёг
+    - 77.88.8.8
+    - 77.88.8.1
 
 fake-ip-dns:
   # dns config to override if fake-ip is enabled

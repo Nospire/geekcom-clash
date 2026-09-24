@@ -493,20 +493,26 @@ func BuildYAML(proxies []Proxy) ([]byte, error) {
 	for _, p := range proxies {
 		names = append(names, asStr(p["name"]))
 	}
-	selectProxies := append(append([]any{}, names...), "DIRECT")
+	// GEEKCOM-VPN — та же группа, которой управляет плагин/GUI и на которую ссылаются
+	// правила. БЕЗ DIRECT: раньше группа PROXY (ноды + DIRECT) + MATCH,PROXY роняла
+	// связь в режиме «Правила», если выбор залипал на DIRECT (баг из фидбека).
+	// GEEKCOM-AUTO первым = авто-выбор быстрейшей. Имена совпадают с force-группами
+	// override.yaml → при генерации running_config дубля не будет (движок их не добавит).
+	selectProxies := append([]any{"GEEKCOM-AUTO"}, names...)
 	autoProxies := names
 	if len(autoProxies) == 0 {
 		autoProxies = []any{"DIRECT"}
+		selectProxies = []any{"GEEKCOM-AUTO", "DIRECT"}
 	}
 	cfg := Proxy{
 		"mixed-port": 7890,
 		"mode":       "rule",
 		"proxies":    toAnySlice(proxies),
 		"proxy-groups": []any{
-			Proxy{"name": "PROXY", "type": "select", "proxies": selectProxies},
-			Proxy{"name": "AUTO", "type": "url-test", "url": "http://www.gstatic.com/generate_204", "interval": 300, "lazy": true, "proxies": autoProxies},
+			Proxy{"name": "GEEKCOM-VPN", "type": "select", "proxies": selectProxies},
+			Proxy{"name": "GEEKCOM-AUTO", "type": "url-test", "url": "http://www.gstatic.com/generate_204", "interval": 300, "lazy": true, "proxies": autoProxies},
 		},
-		"rules": []any{"MATCH,PROXY"},
+		"rules": []any{"MATCH,GEEKCOM-VPN"},
 	}
 	return yaml.Marshal(cfg)
 }
