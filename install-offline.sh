@@ -108,6 +108,17 @@ fi
 mv_impl "${TEMP_DIR}/${PACKAGE}/data" "${DATA_DIR}" "${PACKAGE}"
 mv_impl "${TEMP_DIR}/${PACKAGE}" "${PLUGIN_DIR}" "${PACKAGE}"
 
+# Desktop app (Go-движок + GUI): деплоим ЯВНО из установленного бандла.
+# Не полагаемся на плагинный _deploy_desktop: при оффлайн-mv Decky может держать
+# в реестре старую версию → стамп ложно совпадёт и автодеплой пропустится.
+DEPLOY="${PLUGIN_DIR}/${PACKAGE}/desktop/deploy-desktop.sh"
+if [ -f "$DEPLOY" ]; then
+  echo "Deploying desktop app ..."
+  VER=$(grep '"version"' "${PLUGIN_DIR}/${PACKAGE}/package.json" 2>/dev/null | head -1 | cut -d'"' -f4)
+  GCC_USER="${SUDO_USER:-$(id -un)}" GCC_PLUGIN_DIR="${PLUGIN_DIR}/${PACKAGE}" GCC_VERSION="${VER}" \
+    bash "$DEPLOY" || echo "  desktop deploy failed (non-fatal)"
+fi
+
 echo
 echo "Installation complete!"
 echo

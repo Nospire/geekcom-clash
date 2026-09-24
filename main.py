@@ -189,7 +189,14 @@ class Plugin:
                 home = pwd.getpwnam(user).pw_dir
             except KeyError:
                 home = f"/home/{user}"
-            version = str(decky.DECKY_PLUGIN_VERSION)
+            # Версию берём из package.json (её бампит CI), а НЕ из
+            # DECKY_PLUGIN_VERSION: после оффлайн-mv Decky может держать в реестре
+            # старую версию → стамп ложно совпадёт и автодеплой пропустится.
+            try:
+                with open(os.path.join(decky.DECKY_PLUGIN_DIR, "package.json")) as pf:
+                    version = str(json.load(pf).get("version") or decky.DECKY_PLUGIN_VERSION)
+            except Exception:
+                version = str(decky.DECKY_PLUGIN_VERSION)
             stamp = os.path.join(home, ".local", "share", "geekcom-clash", ".deployed-version")
             try:
                 with open(stamp) as f:
@@ -223,13 +230,23 @@ class Plugin:
             logger.error(f"deploy_desktop failed: {e}")
 
     async def set_core_status(self, status: bool) -> Tuple[bool, Optional[str]]:
+        gobin = self._engine_bin()
         try:
             if status:
-                # Конфиг генерит ExecStartPre юнита (ctl regen) от имени deck.
-                await self.core.start()
+                # NIGHTLY: запуск через Go-движок (ensureCaps + systemctl start;
+                # конфиг генерит ExecStartPre юнита = ctl regen → тоже Go).
+                # Заодно чиним дыру: cap-самохил после апдейта mihomo на пути
+                # плагина (раньше был только в TUI).
+                if gobin:
+                    await self._run_engine(gobin, "start")
+                else:
+                    await self.core.start()
                 await self._apply_node_selection()
             else:
-                await self.core.stop()
+                if gobin:
+                    await self._run_engine(gobin, "stop")
+                else:
+                    await self.core.stop()
         except Exception as e:
             logger.error(f"set_core_status: failed with {e}")
             logger.debug(f"stack trace: {utils.get_traceback(e)}")
@@ -314,6 +331,64 @@ class Plugin:
             except Exception:
                 await asyncio.sleep(0.4)
         logger.warning(f"_apply_node_selection: controller not ready, skipped {node}")
+
+    def _engine_bin(self) -> Optional[str]:
+        """Путь к Go-движку (geekcom-clash). None, если не задеплоен."""
+        import pwd
+        user = os.environ.get("DECKY_USER", "deck")
+        try:
+            home = pwd.getpwnam(user).pw_dir
+        except KeyError:
+            home = f"/home/{user}"
+        gobin = os.path.join(home, ".local", "share", "geekcom-clash", "geekcom-clash")
+        return gobin if os.path.exists(gobin) else None
+
+    def _engine_argv(self, gobin: str, *args: str) -> list:
+        """Команда запуска движка ОТ ИМЕНИ дек-юзера (плагин — root). Через
+        runuser: тогда systemctl --user работает, файлы создаются дек-овнед,
+        а setcap-wrapper берёт NOPASSWD дека. env-переменные движка передаём
+        внутрь (runuser сбрасывает окружение)."""
+        user = os.environ.get("DECKY_USER", "deck")
+        # SHARED-CORE: mihomo лежит рядом с движком в APP_DIR (~/.local/share/
+        # geekcom-clash), общий для плагина и GUI — НЕ в plugin/bin.
+        pairs = [
+            f"GEEKCOM_CLASH_DIR={decky.DECKY_PLUGIN_SETTINGS_DIR}",
+            f"GEEKCOM_CLASH_MIHOMO={os.path.join(os.path.dirname(gobin), 'mihomo')}",
+            f"GEEKCOM_CLASH_RESOURCE_DIR={decky.DECKY_PLUGIN_RUNTIME_DIR}",
+        ]
+        return ["runuser", "-u", user, "--", "env", *pairs, gobin, *args]
+
+    def _engine_base_env(self) -> dict:
+        """Чистое окружение для subprocess: decky инжектит LD_* (ломает bash/
+        runuser), убираем."""
+        env = dict(os.environ)
+        env.pop("LD_LIBRARY_PATH", None)
+        env.pop("LD_PRELOAD", None)
+        env["PATH"] = "/usr/sbin:/usr/bin:/sbin:/bin"
+        return env
+
+    async def _run_engine(self, gobin: str, *args: str) -> subprocess.CompletedProcess:
+        """Запустить движок (как дек-юзер); бросить при ненулевом коде."""
+        loop = asyncio.get_event_loop()
+        r = await loop.run_in_executor(None, functools.partial(
+            subprocess.run, self._engine_argv(gobin, *args), env=self._engine_base_env(),
+            capture_output=True, text=True, timeout=60))
+        if r.returncode != 0:
+            raise RuntimeError((r.stderr or r.stdout or "").strip() or f"engine {args[0]} rc={r.returncode}")
+        return r
+
+    async def get_engine_version(self) -> str:
+        """Версия Go-движка. Пусто, если бинаря нет (релиз без движка) — тогда
+        строка в About не показывается."""
+        gobin = self._engine_bin()
+        if not gobin:
+            return ""
+        try:
+            r = await self._run_engine(gobin, "version")
+            return r.stdout.strip()
+        except Exception as e:
+            logger.error(f"get_engine_version: {e}")
+            return ""
 
     async def kill_core(self) -> bool:
         return CoreController.kill(self._get("timeout"))
@@ -518,6 +593,24 @@ class Plugin:
 
     async def download_subscription(self, url: str) -> Tuple[bool, Optional[str]]:
         self._reload_settings()
+        gobin = self._engine_bin()
+        if gobin:
+            # NIGHTLY: добавление подписки делает Go-движок (парс/скачивание/
+            # валидация/сохранение/регистрация в config.json).
+            try:
+                r = await self._run_engine(gobin, "add-sub", url)
+                data = json.loads((r.stdout or "").strip().splitlines()[-1])
+            except Exception as e:
+                logger.error(f"download_subscription (engine): {e}")
+                return False, str(e)
+            self._reload_settings()  # Go сам записал подписку в config.json
+            if data.get("ok"):
+                name = data["result"][0]
+                await decky.emit("sub_update", name)
+                return True, None
+            return False, str(data.get("result"))
+
+        # fallback: Python-движок (релиз без Go-бинаря)
         subs: subscription.SubscriptionDict = self.settings.getSetting("subscriptions")
         ok, data = subscription.download_sub(
             url,

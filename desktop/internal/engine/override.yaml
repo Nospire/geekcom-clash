@@ -1,0 +1,99 @@
+# this config is used to override the original Clash/Mihomo config file
+# 此处设置用于覆盖原始的 Clash/Mihomo 配置文件
+
+dns-override:
+  # dns config to override if dns-override is enabled
+  # Пресет DNS под РФ/СНГ: DoH-резолверы, устойчивые к DPI, вместо китайских.
+  enable: true
+  ipv6: false
+  default-nameserver:
+    # bootstrap по IP (без DoH) — чтобы резолвить сами DoH-хосты
+    - 1.1.1.1
+    - 8.8.8.8
+    - 9.9.9.9
+  nameserver:
+    - https://cloudflare-dns.com/dns-query
+    - https://dns.google/dns-query
+    - https://dns.quad9.net/dns-query
+    - tls://1.1.1.1:853
+
+fake-ip-dns:
+  # dns config to override if fake-ip is enabled
+  # 启用 Fake-IP 后采用
+  enhanced-mode: fake-ip
+  fake-ip-range: 198.18.0.0/16
+  fake-ip-filter-mode: blacklist
+  fake-ip-filter:
+    - '*.lan'
+    - '*.localdomain'
+    - '*.localhost'
+    - '*.local'
+    - '*.home.arpa'
+    - stun.*.*
+    - stun.*.*.*
+    - +.stun.*.*
+    - +.stun.*.*.*
+    - +.stun.*.*.*.*
+
+redir-host-dns:
+  # dns config to override if redir-host is enabled
+  # 启用 Redir-Host 后采用
+  enhanced-mode: redir-host
+
+tun-override:
+  # tun config to override anyway
+  # Tun 配置覆盖, 无论如何都会启用
+  enable: true
+  stack: mixed
+  auto-route: true
+  auto-redirect: true
+  auto-detect-interface: true
+
+always-override:
+  # config to override anyway
+  # 总是覆盖
+  unified-delay: true
+  profile:
+    store-selected: true
+    store-fake-ip: true
+
+skip-steam-rules:
+  # skip steam download cdn detect rules
+  # 跳过 Steam 下载 CDN 探测 URL 的规则
+  - DOMAIN-SUFFIX,cm.steampowered.com,DIRECT
+  - DOMAIN-SUFFIX,steamserver.net,DIRECT
+
+force-proxy-group:
+  # Группа, через которую ПРИНУДИТЕЛЬНО гоним системные сервисы и на которую
+  # ссылаются правила. type: select — чтобы ноду можно было выбрать РУКАМИ
+  # (игровой режим/TUI). Первый пункт GEEKCOM-AUTO = авто-выбор быстрейшей и
+  # выбор по умолчанию. include-all: true — добавляет все ноды подписки.
+  name: GEEKCOM-VPN
+  type: select
+  include-all: true
+  proxies:
+    - GEEKCOM-AUTO
+
+force-auto-group:
+  # «Авто (быстрейшая)» — url-test по всем нодам. Вложена в GEEKCOM-VPN первым
+  # пунктом. Внедряется в proxy-groups вместе с GEEKCOM-VPN.
+  name: GEEKCOM-AUTO
+  type: url-test
+  url: http://www.gstatic.com/generate_204
+  interval: 300
+  lazy: true
+  include-all: true
+
+force-proxy-rules:
+  # Обязательно через VPN (иначе с РФ-IP блокируется/режется):
+  # OpenH264 (видеокодек Discord/Chromium), Flathub, обновления SteamOS, Decky Loader.
+  # Префиксуются к правилам подписки → имеют наивысший приоритет.
+  - DOMAIN-SUFFIX,openh264.org,GEEKCOM-VPN
+  - DOMAIN-SUFFIX,flathub.org,GEEKCOM-VPN
+  - DOMAIN-SUFFIX,steamos.cloud,GEEKCOM-VPN
+  # Decky Loader и обновления плагинов (узко, без всего github.com):
+  - DOMAIN,api.github.com,GEEKCOM-VPN
+  - DOMAIN,codeload.github.com,GEEKCOM-VPN
+  - DOMAIN,raw.githubusercontent.com,GEEKCOM-VPN
+  - DOMAIN,objects.githubusercontent.com,GEEKCOM-VPN
+  - DOMAIN-SUFFIX,deckbrew.xyz,GEEKCOM-VPN

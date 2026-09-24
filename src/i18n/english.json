@@ -97,6 +97,7 @@
     "REINSTALL": "Reinstall",
     "UPGRADE_TO": "Upgrade to",
     "INSTALLED_VERSION": "Installed Version",
+    "ENGINE": "Engine",
     "LATEST_VERSION": "Latest Version",
     "INSTALL_SUCCESS": "Installed",
     "INSTALL_FAILURE": "Failed to Install",

@@ -1,0 +1,14 @@
+// Geekcom Clash — polkit-правило.
+// mihomo при поднятии TUN зовёт `resolvectl dns/domain/default-route Meta ...`,
+// чтобы зарегистрировать DNS туннеля в systemd-resolved. Эти действия
+// (org.freedesktop.resolve1.*) по умолчанию требуют авторизации → на десктопе
+// SteamOS всплывает окно ввода пароля. Разрешаем их активной локальной сессии
+// без пароля (пользователь физически за Декой).
+//
+// Ставится установщиком в /etc/polkit-1/rules.d/49-geekcom-clash.rules (нужен root).
+polkit.addRule(function(action, subject) {
+    if (subject.active && subject.local &&
+        action.id.indexOf("org.freedesktop.resolve1.") === 0) {
+        return polkit.Result.YES;
+    }
+});

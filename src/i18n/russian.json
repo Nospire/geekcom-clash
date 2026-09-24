@@ -97,6 +97,7 @@
     "REINSTALL": "Переустановить",
     "UPGRADE_TO": "Обновить до",
     "INSTALLED_VERSION": "Установленная версия",
+    "ENGINE": "Движок",
     "LATEST_VERSION": "Последняя версия",
     "INSTALL_SUCCESS": "Установлено",
     "INSTALL_FAILURE": "Не удалось установить",
