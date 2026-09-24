@@ -46,6 +46,7 @@ type Info struct {
 	ControllerPort int    `json:"controller_port"`
 	Current        string `json:"current"`
 	Dashboard      string `json:"dashboard"`
+	Mode           string `json:"mode"` // сохранённый режим (rule/global/direct)
 	Active         bool   `json:"active"`
 	ControllerUp   bool   `json:"controller_up"`
 	CoreBin        string `json:"core_bin"`
@@ -179,6 +180,9 @@ func (a *apiClient) mode() string {
 // forceGroup — имя url-test группы из override.yaml (force-proxy-group.name).
 const forceGroup = "GEEKCOM-VPN"
 
+// autoGroup — url-test «Авто (быстрейшая)» внутри forceGroup (force-auto-group).
+const autoGroup = "GEEKCOM-AUTO"
+
 func (a *apiClient) setMode(m string) error {
 	if _, err := a.do("PATCH", "/configs", []byte(fmt.Sprintf(`{"mode":%q}`, m))); err != nil {
 		return err
@@ -232,7 +236,10 @@ func (a *apiClient) groupDelay(group string) (map[string]int, error) {
 
 // primarySelector — главная пользовательская группа-селектор.
 func primarySelector(px map[string]Proxy) string {
-	prefer := []string{"→ Remnawave", "Remnawave", "PROXY", "Proxy", "Proxies", "节点选择", "选择节点"}
+	// GEEKCOM-VPN — последней: подписки из share-ссылок маршрутизируют в неё
+	// (MATCH,GEEKCOM-VPN), а у провайдерских подписок MATCH обычно ведёт в их
+	// собственную группу из списка выше.
+	prefer := []string{"→ Remnawave", "Remnawave", "PROXY", "Proxy", "Proxies", "节点选择", "选择节点", forceGroup}
 	for _, name := range prefer {
 		if p, ok := px[name]; ok && p.Type == "Selector" {
 			return name

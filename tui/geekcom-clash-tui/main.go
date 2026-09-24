@@ -14,7 +14,9 @@ import (
 )
 
 const innerW = 64
-const maxNodes = 7
+
+// scrollStep — на сколько строк листает колесо мыши.
+const scrollStep = 3
 
 // version — версия сборки (ставится через -ldflags -X main.version).
 var version = "dev"
@@ -35,6 +37,19 @@ type zone struct {
 	id, data       string
 }
 
+// layout — размеры последнего кадра (пишет View, читает Update для прокрутки).
+// Указатель, т.к. View работает с копией model.
+type layout struct {
+	content, view int
+}
+
+func (l *layout) maxScroll() int {
+	if l.content > l.view {
+		return l.content - l.view
+	}
+	return 0
+}
+
 type nodeItem struct {
 	name     string
 	delay    int
@@ -49,7 +64,8 @@ type model struct {
 	api      *apiClient
 	group    string
 	nodes    []nodeItem
-	nodeScr  int
+	scroll   int // прокрутка всего экрана (если он не влезает в окно)
+	lay      *layout
 	mode     string
 	tr       Traffic
 	subs     []string
@@ -130,7 +146,9 @@ func refreshCmd(i Info) tea.Cmd {
 							continue
 						}
 						item := nodeItem{name: n, delay: -1, selected: n == grp.Now}
-						if p, ok := px[n]; ok {
+						// у url-test «Авто» задержка = текущей ноды, до первого
+						// выбора mihomo отдаёт 0 → не показываем ложный «таймаут»
+						if p, ok := px[n]; ok && n != autoGroup {
 							item.delay = p.delay()
 						}
 						d.nodes = append(d.nodes, item)
@@ -168,11 +186,29 @@ func stopCmd() tea.Cmd {
 
 func setModeCmd(i Info, m string) tea.Cmd {
 	return func() tea.Msg {
-		if err := newAPI(i).setMode(m); err != nil {
+		// Сначала запоминаем (ctl regen пишет режим в конфиг при каждом старте —
+		// иначе после выкл/вкл он сбрасывался на «Правила»), потом применяем
+		// на лету, если ядро запущено.
+		if _, err := runCtl("set-mode", m); err != nil {
 			return statusMsg("Режим: " + err.Error())
 		}
-		return statusMsg("Режим: " + m)
+		if i.Active && i.ControllerUp {
+			if err := newAPI(i).setMode(m); err != nil {
+				return statusMsg("Режим: " + err.Error())
+			}
+		}
+		return statusMsg("Режим: " + modeLabel(m))
 	}
+}
+
+func modeLabel(m string) string {
+	switch m {
+	case "global":
+		return "Глобально"
+	case "direct":
+		return "Напрямую"
+	}
+	return "Правила"
 }
 
 func selectNodeCmd(i Info, group, name string) tea.Cmd {
@@ -240,6 +276,7 @@ func initialModel() model {
 		screen: "main",
 		ti:     ti,
 		zones:  &z,
+		lay:    &layout{},
 	}
 }
 
@@ -306,11 +343,10 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.screen == "addsub" {
 		switch msg.String() {
 		case "esc":
-			m.screen = "main"
-			return m, nil
+			return m.goScreen("main"), nil
 		case "enter":
 			url := strings.TrimSpace(m.ti.Value())
-			m.screen = "main"
+			m = m.goScreen("main")
 			if url != "" {
 				m.busy = "Добавляю..."
 				return m, addSubCmd(url)
@@ -328,12 +364,42 @@ func (m model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, tea.Quit
 	case "esc":
-		m.screen = "main"
-		return m, nil
+		return m.goScreen("main"), nil
 	case "t":
 		return m.toggleTheme()
+	case "up", "k":
+		return m.scrollBy(-1), nil
+	case "down", "j":
+		return m.scrollBy(1), nil
+	case "pgup":
+		return m.scrollBy(-m.lay.view + 1), nil
+	case "pgdown", " ":
+		return m.scrollBy(m.lay.view - 1), nil
+	case "home", "g":
+		return m.scrollBy(-m.lay.content), nil
+	case "end", "G":
+		return m.scrollBy(m.lay.content), nil
 	}
 	return m, nil
+}
+
+// scrollBy — прокрутить экран на d строк в пределах [0, maxScroll].
+func (m model) scrollBy(d int) model {
+	m.scroll += d
+	if mx := m.lay.maxScroll(); m.scroll > mx {
+		m.scroll = mx
+	}
+	if m.scroll < 0 {
+		m.scroll = 0
+	}
+	return m
+}
+
+// goScreen — сменить экран и вернуться к его началу.
+func (m model) goScreen(s string) model {
+	m.screen = s
+	m.scroll = 0
+	return m
 }
 
 func (m model) toggleTheme() (tea.Model, tea.Cmd) {
@@ -344,16 +410,10 @@ func (m model) toggleTheme() (tea.Model, tea.Cmd) {
 
 func (m model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if msg.Button == tea.MouseButtonWheelDown {
-		if m.nodeScr < len(m.nodes)-maxNodes {
-			m.nodeScr++
-		}
-		return m, nil
+		return m.scrollBy(scrollStep), nil
 	}
 	if msg.Button == tea.MouseButtonWheelUp {
-		if m.nodeScr > 0 {
-			m.nodeScr--
-		}
-		return m, nil
+		return m.scrollBy(-scrollStep), nil
 	}
 	if msg.Action != tea.MouseActionPress || msg.Button != tea.MouseButtonLeft {
 		return m, nil
@@ -387,17 +447,15 @@ func (m model) activate(z zone) (tea.Model, tea.Cmd) {
 	case "webpanel":
 		// нет выбранной панели — открываем выбор, иначе сразу панель
 		if m.info.Dashboard == "" {
-			m.screen = "dashpick"
-			return m, nil
+			return m.goScreen("dashpick"), nil
 		}
 		openURL(dashURL(m.info, m.info.Dashboard))
 		m.status = "Открываю: " + m.info.Dashboard
 		return m, nil
 	case "dashpick":
-		m.screen = "dashpick"
-		return m, nil
+		return m.goScreen("dashpick"), nil
 	case "dashsel":
-		m.screen = "main"
+		m = m.goScreen("main")
 		m.info.Dashboard = z.data
 		openURL(dashURL(m.info, z.data))
 		return m, setDashboardCmd(z.data)
@@ -431,15 +489,14 @@ func (m model) activate(z zone) (tea.Model, tea.Cmd) {
 		m.status = "Веб-импорт включён"
 		return m, nil
 	case "addsub":
-		m.screen = "addsub"
+		m = m.goScreen("addsub")
 		m.ti.SetValue("")
 		m.ti.Focus()
 		return m, textinput.Blink
 	case "subpick":
-		m.screen = "subpick"
-		return m, nil
+		return m.goScreen("subpick"), nil
 	case "subsel":
-		m.screen = "main"
+		m = m.goScreen("main")
 		return m, setSubCmd(z.data)
 	case "update":
 		if m.current != "" {
@@ -457,15 +514,14 @@ func (m model) activate(z zone) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "addok":
 		url := strings.TrimSpace(m.ti.Value())
-		m.screen = "main"
+		m = m.goScreen("main")
 		if url != "" {
 			m.busy = "Добавляю..."
 			return m, addSubCmd(url)
 		}
 		return m, nil
 	case "cancel":
-		m.screen = "main"
-		return m, nil
+		return m.goScreen("main"), nil
 	}
 	return m, nil
 }

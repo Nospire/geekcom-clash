@@ -15,7 +15,7 @@
     "EDIT": "编辑",
     "DUPLICATE": "复制",
     "SUBSCRIPTION_ACTIONS": "订阅操作",
-    "SUBSCRIPTION_LINK": "订阅链接",
+    "SUBSCRIPTION_LINK": "https://… 或 vless:// vmess:// ss:// trojan:// hysteria2://",
     "SELECT_SUBSCRIPTION": "选择订阅",
     "UPDATE_SUBSCRIPTION": "更新订阅",
     "UPDATE_SUBSCRIPTION_DONE": "订阅已更新",
@@ -23,7 +23,7 @@
     "NODE": "节点",
     "SELECT_NODE": "选择节点",
     "NODE_AUTO": "自动（最快）",
-    "DOWNLOAD_SUBSCRIPTION": "下载订阅",
+    "DOWNLOAD_SUBSCRIPTION": "导入订阅或节点链接",
     "DOWNLOADING": "下载中 ...",
     "DOWNLOAD_DESC": "支持订阅 http(s)://...、文件 file://...，或节点分享链接：vless:// vmess:// ss:// trojan:// hysteria2://",
     "DOWNLOAD_SUCCESS": "下载完成",
@@ -112,5 +112,14 @@
     "DIRECT": "直连",
     "UPLOAD": "上传",
     "DOWNLOAD": "下载",
-    "MEMORY": "内存"
+    "MEMORY": "内存",
+    "IMPORT_SUPPORTED": "支持：Clash/Mihomo 订阅链接（http/https）、base64 v2ray 订阅，以及节点链接 vless://、vmess://、ss://、trojan://、hysteria2://（hy2://）——可一条或多条，每行一条。",
+    "OUTBOUND_MODE_DESC": "关闭/开启 VPN 后保持不变",
+    "MODE_CHANGE_FAILED": "切换模式失败",
+    "TEST_DELAY": "测试延迟",
+    "TESTING_DELAY": "正在测试延迟……",
+    "TEST_DELAY_DESC": "需先开启 VPN",
+    "TEST_DELAY_FAILED": "延迟测试失败",
+    "DELAY_TIMEOUT": "超时",
+    "MS": "毫秒"
 }

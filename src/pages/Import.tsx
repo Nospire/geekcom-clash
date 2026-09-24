@@ -99,6 +99,10 @@ export const Import: FC = () => {
         <DialogControlsSectionHeader>
           {t(L.DOWNLOAD_SUBSCRIPTION)}
         </DialogControlsSectionHeader>
+        <Field
+          focusable={false}
+          description={t(L.IMPORT_SUPPORTED)}
+        />
         <TextFieldWithButton
           description={downloadTips}
           placeholder={t(L.SUBSCRIPTION_LINK)}

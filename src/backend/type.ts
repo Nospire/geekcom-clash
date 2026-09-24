@@ -8,6 +8,8 @@ export enum ResourceType {
   CORE = "core",
 }
 
+export type ClashMode = "rule" | "global" | "direct";
+
 export interface Config {
   status: boolean,
   current: string | null,
@@ -19,4 +21,5 @@ export interface Config {
   controller_port: number,
   autostart: boolean,
   skip_steam_download: boolean,
+  mode: ClashMode,
 }

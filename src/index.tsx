@@ -33,7 +33,6 @@ import {
   Memory,
   Traffic,
   getClashMode,
-  setClashMode as patchClashMode,
   streamMemory,
   streamTraffic,
 } from "./backend/core";
@@ -103,11 +102,17 @@ const Content: FC<{}> = ({ }) => {
   const [initialized, setInitialized] = useState(false);
   const [qrPageUrl, setQRPageUrl] = useState<string>();
   const [currentIP, setCurrentIP] = useState<string>(localIP);
-  const [clashMode, setClashMode] = useState<ClashMode | null>(null);
+  // Режим маршрутизации: сохранённый выбор (переживает выкл/вкл), а при
+  // запущенном ядре — живое значение из контроллера.
+  const [clashMode, setClashMode] = useState<ClashMode>(localConfig.mode || "rule");
   const [traffic, setTraffic] = useState<Traffic | null>(null);
   const [memory, setMemory] = useState<Memory | null>(null);
   const [nodeOptions, setNodeOptions] = useState<DropdownOption[]>([]);
   const [currentNode, setCurrentNode] = useState<string | null>(null);
+  const [nodeMembers, setNodeMembers] = useState<string[]>([]);
+  // Задержка до нод, мс. undefined — не проверялась, 0 — таймаут.
+  const [nodeDelays, setNodeDelays] = useState<Record<string, number>>({});
+  const [testingDelay, setTestingDelay] = useState(false);
   const [updatingSub, setUpdatingSub] = useState(false);
 
   const refreshVersions = async () => {
@@ -139,16 +144,69 @@ const Content: FC<{}> = ({ }) => {
 
   const fetchNodes = async () => {
     try {
-      const { members, current } = await backend.getNodes();
-      setNodeOptions(
-        members.map((name) => ({
-          label: name === "GEEKCOM-AUTO" ? t(L.NODE_AUTO) : name,
-          data: name,
-        }))
-      );
+      const { members, current, delays } = await backend.getNodes();
+      setNodeMembers(members);
+      if (delays && Object.keys(delays).length > 0)
+        setNodeDelays(delays);
       setCurrentNode(current);
     } catch (e) {
       console.log("fetchNodes failed", e);
+    }
+  };
+
+  const formatDelay = (name: string) => {
+    // «Авто» — url-test группа: её задержка = задержка текущей выбранной ноды,
+    // а сразу после старта (ещё не выбрала) mihomo отдаёт 0 → ложный «таймаут».
+    if (name === "GEEKCOM-AUTO")
+      return "";
+    const delay = nodeDelays[name];
+    if (delay === undefined)
+      return "";
+    return delay > 0 ? `${delay} ${t(L.MS)}` : t(L.DELAY_TIMEOUT);
+  };
+
+  useEffect(() => {
+    setNodeOptions(
+      nodeMembers.map((name) => {
+        const label = name === "GEEKCOM-AUTO" ? t(L.NODE_AUTO) : name;
+        const delay = formatDelay(name);
+        return { label: delay ? `${label} · ${delay}` : label, data: name };
+      })
+    );
+  }, [nodeMembers, nodeDelays]);
+
+  const testDelays = async () => {
+    if (testingDelay) return;
+    setTestingDelay(true);
+    try {
+      const [delays, error] = await backend.testDelays();
+      if (error) {
+        toaster.toast({ title: t(L.TEST_DELAY_FAILED), body: error, icon: <DeckyClashIcon /> });
+        return;
+      }
+      // Кто не ответил за таймаут — в ответе отсутствует: помечаем 0.
+      const result: Record<string, number> = {};
+      for (const name of nodeMembers)
+        result[name] = delays[name] ?? 0;
+      setNodeDelays(result);
+    } finally {
+      setTestingDelay(false);
+    }
+  };
+
+  const changeMode = async (mode: ClashMode) => {
+    const previousMode = clashMode;
+    setClashMode(mode);
+    patchLocalConfig("mode", mode);
+    const [ok, error] = await backend.setMode(mode);
+    if (!ok) {
+      setClashMode(previousMode);
+      patchLocalConfig("mode", previousMode);
+      toaster.toast({
+        title: t(L.MODE_CHANGE_FAILED),
+        body: error,
+        icon: <DeckyClashIcon />,
+      });
     }
   };
 
@@ -199,6 +257,8 @@ const Content: FC<{}> = ({ }) => {
     setSkipSteamDownload(config.skip_steam_download);
     setCurrentDashboard(config.dashboard);
     setControllerPort(config.controller_port);
+    if (config.mode)
+      setClashMode(config.mode);
   }
 
   const fetchConfig = async () => {
@@ -217,13 +277,15 @@ const Content: FC<{}> = ({ }) => {
   };
 
   const fetchClashMode = async () => {
+    // Живой режим ядра (его могли сменить из веб-панели/TUI). Если контроллер
+    // ещё не поднялся — оставляем сохранённый.
     try {
       const mode = await getClashMode(controllerPort, secret);
       console.log(mode);
-      setClashMode(mode);
+      if (mode)
+        setClashMode(mode);
     } catch (e) {
       console.error(e);
-      setClashMode(null);
     }
   };
 
@@ -271,7 +333,8 @@ const Content: FC<{}> = ({ }) => {
       dashboard: currentDashboard,
       controller_port: controllerPort,
       autostart: autostart,
-      skip_steam_download: skipSteamDownload
+      skip_steam_download: skipSteamDownload,
+      mode: clashMode,
     };
   }
 
@@ -280,15 +343,13 @@ const Content: FC<{}> = ({ }) => {
     if (initialized) {
       window.localStorage.setItem("decky-clash-config", JSON.stringify(getCurrentConfig()));
     }
-  }, [initialized, clashState, currentSub, overrideDNS, enhancedMode, allowRemoteAccess, currentDashboard])
+  }, [initialized, clashState, currentSub, overrideDNS, enhancedMode, allowRemoteAccess, currentDashboard, clashMode])
 
   useLayoutEffect(() => { fetchAllConfig(); }, []);
 
   useEffect(() => {
     if (clashState)
       fetchClashMode();
-    else
-      setClashMode(null);
   }, [clashState]);
 
   useEffect(() => {
@@ -490,6 +551,29 @@ const Content: FC<{}> = ({ }) => {
         <PanelSectionRow>
           <ButtonItem
             layout="below"
+            description={clashState ? undefined : t(L.TEST_DELAY_DESC)}
+            disabled={!clashState || testingDelay || currentSub === null}
+            onClick={testDelays}
+          >
+            {testingDelay ? t(L.TESTING_DELAY) : t(L.TEST_DELAY)}
+          </ButtonItem>
+        </PanelSectionRow>
+        <PanelSectionRow>
+          <DropdownItem
+            label={t(L.OUTBOUND_MODE)}
+            description={t(L.OUTBOUND_MODE_DESC)}
+            rgOptions={[
+              { label: t(L.RULE), data: "rule" as ClashMode },
+              { label: t(L.GLOBAL), data: "global" as ClashMode },
+              { label: t(L.DIRECT), data: "direct" as ClashMode },
+            ]}
+            selectedOption={clashMode}
+            onChange={(value) => changeMode(value.data)}
+          />
+        </PanelSectionRow>
+        <PanelSectionRow>
+          <ButtonItem
+            layout="below"
             disabled={currentSub === null || updatingSub}
             onClick={updateCurrentSubscription}
           >
@@ -548,32 +632,6 @@ const Content: FC<{}> = ({ }) => {
                 `${formatBytes(memory.inuse)}${memory.oslimit ? ` / ${formatBytes(memory.oslimit)}` : ''}` :
                 t(L.LOADING)}
             </Field>
-          </PanelSectionRow>
-          <PanelSectionRow>
-            <DropdownItem
-              label={t(L.OUTBOUND_MODE)}
-              rgOptions={[
-                { label: t(L.RULE), data: "rule" as ClashMode },
-                { label: t(L.GLOBAL), data: "global" as ClashMode },
-                { label: t(L.DIRECT), data: "direct" as ClashMode },
-              ]}
-              selectedOption={clashMode}
-              onChange={async (value) => {
-                const previousMode = clashMode;
-                setClashMode(value.data);
-                try {
-                  await patchClashMode(controllerPort, secret, value.data);
-                  getClashMode(controllerPort, secret).then(setClashMode);
-                } catch (e) {
-                  setClashMode(previousMode);
-                  toaster.toast({
-                    title: t(L.ENABLE_CLASH_FAILED),
-                    body: e instanceof Error ? e.message : String(e),
-                    icon: <DeckyClashIcon />,
-                  });
-                }
-              }}
-            />
           </PanelSectionRow>
         </PanelSection>
       )}

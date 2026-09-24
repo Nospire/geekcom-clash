@@ -1,9 +1,10 @@
 // Translation resources
 const translations = {
   'ru': {
-    'import-tip': 'Импорт подписки Clash / Mihomo',
+    'import-tip': 'Импорт подписки или ссылки на сервер',
+    'import-formats': 'Поддерживаются: ссылка на подписку Clash/Mihomo (http/https), base64-подписка v2ray, ссылки на сервер vless://, vmess://, ss://, trojan://, hysteria2:// (hy2://). Файл — конфиг Clash/Mihomo (.yaml/.yml).',
     'import-file-tip': 'Импорт файла',
-    'sub-link': 'Ссылка подписки',
+    'sub-link': 'https://… или vless:// vmess:// ss:// trojan:// hysteria2://',
     'sel-lang': 'Язык:',
     'loading': 'Загрузка',
     'loading-msg': 'Загружаю подписку, подождите ...',
@@ -21,9 +22,10 @@ const translations = {
     'please-select-file': 'Выберите файл подписки'
   },
   'en': {
-    'import-tip': 'Clash / Mihomo Subscription Import',
+    'import-tip': 'Import a Subscription or Server Link',
+    'import-formats': 'Supported: Clash/Mihomo subscription URL (http/https), base64 v2ray subscription, server links vless://, vmess://, ss://, trojan://, hysteria2:// (hy2://). File: Clash/Mihomo config (.yaml/.yml).',
     'import-file-tip': 'Import File',
-    'sub-link': 'Subscription Link',
+    'sub-link': 'https://… or vless:// vmess:// ss:// trojan:// hysteria2://',
     'sel-lang': 'Language:',
     'loading': 'Downloading',
     'loading-msg': 'Downloading subscription, please wait ...',
@@ -41,9 +43,10 @@ const translations = {
     'please-select-file': 'Please select a subscription file'
   },
   'zh-CN': {
-    'import-tip': '导入 Clash / Mihomo订阅',
+    'import-tip': '导入订阅或节点链接',
+    'import-formats': '支持：Clash/Mihomo 订阅链接（http/https）、base64 v2ray 订阅，以及节点链接 vless://、vmess://、ss://、trojan://、hysteria2://（hy2://）。文件：Clash/Mihomo 配置（.yaml/.yml）。',
     'import-file-tip': '导入文件',
-    'sub-link': '订阅链接',
+    'sub-link': 'https://… 或 vless:// vmess:// ss:// trojan:// hysteria2://',
     'sel-lang': '语言：',
     'loading': '下载中',
     'loading-msg': '正在下载订阅，请稍候……',
@@ -96,6 +99,7 @@ function escapeHtml(text) {
 // Update page text
 function updatePageText() {
   document.getElementById('import-tip').textContent = t('import-tip');
+  document.getElementById('import-formats').textContent = t('import-formats');
   document.getElementById('import-file-tip').textContent = t('import-file-tip');
   document.getElementById('input-url').placeholder = t('sub-link');
   document.getElementById('sel-lang').textContent = t('sel-lang');

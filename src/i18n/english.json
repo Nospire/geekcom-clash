@@ -15,7 +15,7 @@
     "EDIT": "Edit",
     "DUPLICATE": "Duplicate",
     "SUBSCRIPTION_ACTIONS": "Subscription Actions",
-    "SUBSCRIPTION_LINK": "Subscription Link",
+    "SUBSCRIPTION_LINK": "https://… or vless:// vmess:// ss:// trojan:// hysteria2://",
     "SELECT_SUBSCRIPTION": "Select Subscription",
     "UPDATE_SUBSCRIPTION": "Update subscription",
     "UPDATE_SUBSCRIPTION_DONE": "Subscription updated",
@@ -23,7 +23,7 @@
     "NODE": "Node",
     "SELECT_NODE": "Select node",
     "NODE_AUTO": "Auto (fastest)",
-    "DOWNLOAD_SUBSCRIPTION": "Download Subscription",
+    "DOWNLOAD_SUBSCRIPTION": "Import Subscription or Server Link",
     "DOWNLOADING": "Downloading ...",
     "DOWNLOAD_DESC": "Subscription http(s)://..., file://..., or a node share-link: vless:// vmess:// ss:// trojan:// hysteria2://",
     "COMMUNITY": "Community",
@@ -122,5 +122,14 @@
     "DIRECT": "Direct",
     "UPLOAD": "Upload",
     "DOWNLOAD": "Download",
-    "MEMORY": "Memory"
+    "MEMORY": "Memory",
+    "IMPORT_SUPPORTED": "Supported: Clash/Mihomo subscription URL (http/https), base64 v2ray subscription, and server links vless://, vmess://, ss://, trojan://, hysteria2:// (hy2://) — one or several, one per line.",
+    "OUTBOUND_MODE_DESC": "Remembered across VPN off/on",
+    "MODE_CHANGE_FAILED": "Failed to change mode",
+    "TEST_DELAY": "Test Latency",
+    "TESTING_DELAY": "Testing latency ...",
+    "TEST_DELAY_DESC": "Available while VPN is on",
+    "TEST_DELAY_FAILED": "Latency test failed",
+    "DELAY_TIMEOUT": "timeout",
+    "MS": "ms"
 }

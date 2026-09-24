@@ -1,5 +1,5 @@
 import { callable } from "@decky/api";
-import { Config, ResourceType } from ".";
+import { ClashMode, Config, ResourceType } from ".";
 
 export const getCoreStatus = callable<[], boolean>("get_core_status");
 export const setCoreStatus = callable<[boolean], [boolean, string]>("set_core_status");
@@ -30,8 +30,17 @@ export const editSubscription = callable<[string, string, string], []>("edit_sub
 export const setCurrent = callable<[string], boolean>("set_current");
 export const reorderSubscriptions = callable<[string[]], []>("reorder_subscriptions");
 
-export const getNodes = callable<[], { members: string[]; current: string; running: boolean }>("get_nodes");
+export const getNodes = callable<[], {
+  members: string[];
+  current: string;
+  running: boolean;
+  delays: Record<string, number>;
+}>("get_nodes");
 export const setNode = callable<[string], boolean>("set_node");
+export const testDelays = callable<[], [Record<string, number>, string | null]>("test_delays");
+
+export const getMode = callable<[], ClashMode>("get_mode");
+export const setMode = callable<[ClashMode], [boolean, string | null]>("set_mode");
 
 export const getDashboardList = callable<[], string[]>("get_dashboard_list");
 

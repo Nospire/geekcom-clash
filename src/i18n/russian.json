@@ -15,7 +15,7 @@
     "EDIT": "Изменить",
     "DUPLICATE": "Дублировать",
     "SUBSCRIPTION_ACTIONS": "Действия с подпиской",
-    "SUBSCRIPTION_LINK": "Ссылка подписки",
+    "SUBSCRIPTION_LINK": "https://… или vless:// vmess:// ss:// trojan:// hysteria2://",
     "SELECT_SUBSCRIPTION": "Выберите подписку",
     "UPDATE_SUBSCRIPTION": "Обновить подписку",
     "UPDATE_SUBSCRIPTION_DONE": "Подписка обновлена",
@@ -23,7 +23,7 @@
     "NODE": "Нода",
     "SELECT_NODE": "Выберите ноду",
     "NODE_AUTO": "Авто (быстрейшая)",
-    "DOWNLOAD_SUBSCRIPTION": "Загрузить подписку",
+    "DOWNLOAD_SUBSCRIPTION": "Импорт подписки или ссылки на сервер",
     "DOWNLOADING": "Загрузка ...",
     "DOWNLOAD_DESC": "Подписка http(s)://..., файл file://..., или ссылка-нода: vless:// vmess:// ss:// trojan:// hysteria2://",
     "COMMUNITY": "Сообщество",
@@ -122,5 +122,14 @@
     "DIRECT": "Напрямую",
     "UPLOAD": "Отдача",
     "DOWNLOAD": "Загрузка",
-    "MEMORY": "Память"
+    "MEMORY": "Память",
+    "IMPORT_SUPPORTED": "Поддерживаются: ссылка на подписку Clash/Mihomo (http/https), base64-подписка v2ray, а также ссылки на сервер vless://, vmess://, ss://, trojan://, hysteria2:// (hy2://) — одна или несколько, по строке.",
+    "OUTBOUND_MODE_DESC": "Запоминается и сохраняется после выключения VPN",
+    "MODE_CHANGE_FAILED": "Не удалось сменить режим",
+    "TEST_DELAY": "Проверить задержку",
+    "TESTING_DELAY": "Проверяю задержку ...",
+    "TEST_DELAY_DESC": "Доступно при включённом VPN",
+    "TEST_DELAY_FAILED": "Не удалось проверить задержку",
+    "DELAY_TIMEOUT": "таймаут",
+    "MS": "мс"
 }

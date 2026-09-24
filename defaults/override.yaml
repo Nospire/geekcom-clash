@@ -3,19 +3,38 @@
 
 dns-override:
   # dns config to override if dns-override is enabled
-  # Пресет DNS под РФ/СНГ: DoH-резолверы, устойчивые к DPI, вместо китайских.
+  # Пресет DNS под РФ/СНГ.
+  #
+  # Почему не «DoH к Cloudflare/Google напрямую»: запросы к nameserver mihomo
+  # делает МИМО туннеля (прямой dial с привязкой к wlan0), а в РФ DPI режет/
+  # тормозит и DoH к cloudflare-dns.com/dns.google, и UDP/53 к 1.1.1.1/8.8.8.8,
+  # и DoT :853. В fake-ip это не видно на проксируемом трафике (домен резолвит
+  # удалённый сервер), но всё, что идёт DIRECT (или матчится IP-правилами),
+  # резолвится локально → DNS умирает → «пропадает вся связь». Поэтому:
+  #   * nameserver — DoH по IP, но ЧЕРЕЗ туннель (#GEEKCOM-VPN): без цензуры и
+  #     без DPI, независимо от режима (правила/глобально/напрямую);
+  #   * proxy-server-nameserver — домен самого VPN-сервера резолвим НАПРЯМУЮ
+  #     (иначе курица и яйцо) через Яндекс DNS: он в РФ доступен всегда;
+  #   * direct-nameserver — DIRECT-трафик резолвим тоже Яндексом: RU-сайты
+  #     получают правильные (российские) CDN-узлы и работают, даже если VPN
+  #     недоступен;
+  #   * default-nameserver — бутстрап (все адреса выше уже IP, но пусть будет
+  #     доступный в РФ, а не 1.1.1.1/8.8.8.8).
+  # Имя группы после '#' должно совпадать с force-proxy-group.name ниже.
   enable: true
   ipv6: false
   default-nameserver:
-    # bootstrap по IP (без DoH) — чтобы резолвить сами DoH-хосты
-    - 1.1.1.1
-    - 8.8.8.8
-    - 9.9.9.9
+    - 77.88.8.8
+    - 77.88.8.1
+  proxy-server-nameserver:
+    - 77.88.8.8
+    - 77.88.8.1
+  direct-nameserver:
+    - 77.88.8.8
+    - 77.88.8.1
   nameserver:
-    - https://cloudflare-dns.com/dns-query
-    - https://dns.google/dns-query
-    - https://dns.quad9.net/dns-query
-    - tls://1.1.1.1:853
+    - https://1.1.1.1/dns-query#GEEKCOM-VPN
+    - https://8.8.8.8/dns-query#GEEKCOM-VPN
 
 fake-ip-dns:
   # dns config to override if fake-ip is enabled
@@ -83,6 +102,17 @@ force-auto-group:
   interval: 300
   lazy: true
   include-all: true
+
+force-global-group:
+  # Встроенный селектор GLOBAL (режим «Глобально»). Без явного описания mihomo
+  # собирает его сам, и первым пунктом там стоит DIRECT → «Глобально» молча шёл
+  # мимо VPN. Описываем GLOBAL сами: первым — наша VPN-группа, DIRECT нет.
+  # Внедряется, только если в подписке нет своей группы GLOBAL.
+  name: GLOBAL
+  type: select
+  include-all: true
+  proxies:
+    - GEEKCOM-VPN
 
 force-proxy-rules:
   # Обязательно через VPN (иначе с РФ-IP блокируется/режется):

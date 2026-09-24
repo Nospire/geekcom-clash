@@ -19,6 +19,7 @@ shim модуля `decky`, работает с теми же файлами на
   set-sub <name>       — выбрать подписку (+ regen + restart если запущен)
   update-sub <name>    — пере-скачать подписку по сохранённому url
   add-sub <url>        — скачать новую подписку
+  set-mode <mode>      — запомнить режим rule|global|direct (переживает выкл/вкл)
   install-unit         — записать systemd --user юнит
   setcap               — выдать mihomo cap_net_admin (нужен root)
 """
@@ -86,6 +87,7 @@ DEFAULTS = {
     "dashboard": None,
     "skip_steam_download": False,
     "autostart": False,
+    "mode": "rule",
 }
 
 
@@ -176,6 +178,7 @@ def regen(settings: dict) -> str:
             dashboard_dir=str(plugin_dashboard.DASHBOARD_DIR),
             dashboard=settings.get("dashboard"),
             skip_steam_download=settings["skip_steam_download"],
+            mode=settings.get("mode"),
         )
     )
     return RUNNING_CONFIG
@@ -308,6 +311,7 @@ def cmd_info(settings):
         "controller_port": settings["controller_port"],
         "current": settings.get("current"),
         "dashboard": settings.get("dashboard"),
+        "mode": plugin_config.normalize_mode(settings.get("mode")),
         "active": unit_active(),
         "controller_up": controller_ping(settings),
         "core_bin": CORE_BIN,
@@ -329,6 +333,16 @@ def cmd_set_dashboard(settings, name):
     print(f"Панель: {name}")
 
 
+def cmd_set_mode(settings, mode):
+    # Только сохраняем: на лету режим меняет TUI через API контроллера, а при
+    # следующем старте/рестарте regen запишет его в конфиг.
+    if mode not in plugin_config.CLASH_MODES:
+        raise SystemExit(f"Неизвестный режим: {mode}")
+    settings["mode"] = mode
+    save_settings(settings)
+    print(f"Режим: {mode}")
+
+
 def cmd_regen(settings):
     print(regen(settings))
 
@@ -341,6 +355,7 @@ def main():
         sub.add_parser(name)
     p = sub.add_parser("set-dashboard"); p.add_argument("name")
     p = sub.add_parser("set-sub"); p.add_argument("name")
+    p = sub.add_parser("set-mode"); p.add_argument("mode")
     p = sub.add_parser("update-sub"); p.add_argument("name")
     p = sub.add_parser("add-sub"); p.add_argument("url")
     args = ap.parse_args()
@@ -358,6 +373,8 @@ def main():
         cmd_set_dashboard(settings, args.name)
     elif args.cmd == "set-sub":
         cmd_set_sub(settings, args.name)
+    elif args.cmd == "set-mode":
+        cmd_set_mode(settings, args.mode)
     elif args.cmd == "update-sub":
         subs = (settings["_raw"] if isinstance(settings["_raw"], dict) else {}).get("subscriptions", {})
         url = subs.get(args.name)

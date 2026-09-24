@@ -113,20 +113,88 @@ func (m model) View() string {
 		b.line(lipgloss.NewStyle().Background(t.Bg).Foreground(t.Warn).Render(" " + msg))
 	}
 
-	// собрать полотно: каждую строку дотянуть до ширины фоном, добить высоту
-	*m.zones = b.zones
-	rowStyle := lipgloss.NewStyle().Background(t.Bg).Width(w)
-	var canvas []string
-	for _, ln := range b.lines {
-		canvas = append(canvas, rowStyle.Render(ln))
+	// Прокрутка: если экран не влезает в окно (много подписок/нод, маленькое
+	// окно Konsole), показываем «окно» высотой viewH начиная со scroll и
+	// полосу прокрутки справа. Без этого bubbletea молча срезал бы строки.
+	viewH := h - 1 // последняя строка — подсказка
+	m.lay.content, m.lay.view = len(b.lines), viewH
+	scroll := m.scroll
+	if mx := m.lay.maxScroll(); scroll > mx {
+		scroll = mx
 	}
-	for len(canvas) < h-1 {
-		canvas = append(canvas, rowStyle.Render(""))
+	if scroll < 0 {
+		scroll = 0
+	}
+	end := scroll + viewH
+	if end > len(b.lines) {
+		end = len(b.lines)
+	}
+
+	// зоны кликов — в координатах видимого окна; невидимые отбрасываем
+	var zones []zone
+	for _, z := range b.zones {
+		z.y0 -= scroll
+		z.y1 -= scroll
+		if z.y1 < 0 || z.y0 >= viewH {
+			continue
+		}
+		if z.y0 < 0 {
+			z.y0 = 0
+		}
+		if z.y1 >= viewH {
+			z.y1 = viewH - 1
+		}
+		zones = append(zones, z)
+	}
+	*m.zones = zones
+
+	// собрать полотно: каждую строку дотянуть до ширины фоном, добить высоту
+	rowStyle := lipgloss.NewStyle().Background(t.Bg).Width(w - 1)
+	bar := scrollbar(t, viewH, len(b.lines), scroll)
+	var canvas []string
+	for i := 0; i < viewH; i++ {
+		ln := ""
+		if scroll+i < end {
+			ln = b.lines[scroll+i]
+		}
+		canvas = append(canvas, rowStyle.Render(ln)+bar[i])
+	}
+	hint := " тык мышью/пальцем · t — тема · текст: Steam+X"
+	if m.lay.maxScroll() > 0 {
+		hint = " колесо/↑↓ — прокрутка · t — тема · текст: Steam+X"
 	}
 	foot := lipgloss.NewStyle().Background(t.Bg).Foreground(t.Muted).Width(w).
-		Render(" тык мышью/пальцем · t — тема · текст: Steam+X")
+		Render(hint)
 	canvas = append(canvas, foot)
 	return lipgloss.JoinVertical(lipgloss.Left, canvas...)
+}
+
+// scrollbar — колонка шириной 1 символ: трек + ползунок. Пустая, если всё
+// влезает.
+func scrollbar(t Theme, viewH, content, scroll int) []string {
+	out := make([]string, viewH)
+	blank := lipgloss.NewStyle().Background(t.Bg).Render(" ")
+	if content <= viewH || viewH <= 0 {
+		for i := range out {
+			out[i] = blank
+		}
+		return out
+	}
+	thumb := viewH * viewH / content
+	if thumb < 1 {
+		thumb = 1
+	}
+	pos := scroll * (viewH - thumb) / (content - viewH)
+	track := lipgloss.NewStyle().Background(t.Bg).Foreground(t.Border).Render("│")
+	knob := lipgloss.NewStyle().Background(t.Bg).Foreground(t.Accent).Render("█")
+	for i := range out {
+		if i >= pos && i < pos+thumb {
+			out[i] = knob
+		} else {
+			out[i] = track
+		}
+	}
+	return out
 }
 
 func (m model) renderMain(b *builder) {
@@ -210,20 +278,17 @@ func (m model) renderMain(b *builder) {
 	if m.info.Active {
 		// ноды
 		b.line(base.Render(" Нода") + lipgloss.NewStyle().Background(t.Bg).Foreground(t.Muted).Render("   (тык — выбрать)") )
-		b.buttonsRow(2, []btnSpec{{label: "⚡ пинг", id: "ping"}})
-		end := m.nodeScr + maxNodes
-		if end > len(m.nodes) {
-			end = len(m.nodes)
-		}
-		for i := m.nodeScr; i < end; i++ {
-			n := m.nodes[i]
+		b.buttonsRow(2, []btnSpec{{label: "⚡ Проверить задержку", id: "ping"}})
+		for _, n := range m.nodes {
 			y := b.y()
 			rowSt := lipgloss.NewStyle().Background(t.Bg).Foreground(t.Fg)
 			if n.selected {
 				rowSt = lipgloss.NewStyle().Background(t.SelBg).Foreground(t.Fg).Bold(true)
 			}
 			d := "    —"
-			if n.delay >= 0 {
+			if n.delay == 0 {
+				d = "таймаут" // mihomo пишет 0 в историю, если нода не ответила
+			} else if n.delay > 0 {
 				d = fmt.Sprintf("%4d ms", n.delay)
 			}
 			txt := fmt.Sprintf(" %s%-28s %8s", markPlain(n.selected), n.name, d)
@@ -231,16 +296,22 @@ func (m model) renderMain(b *builder) {
 			b.addZone("node", n.name, 0, innerW, y, y)
 		}
 		b.blank()
-
-		// режим
-		b.line(base.Render(" Режим"))
-		b.buttonsRow(2, []btnSpec{
-			{label: "Правила", id: "mode", data: "rule", active: m.mode == "rule"},
-			{label: "Глобально", id: "mode", data: "global", active: m.mode == "global"},
-			{label: "Напрямую", id: "mode", data: "direct", active: m.mode == "direct"},
-		})
-		b.blank()
 	}
+
+	// режим — виден и при выключенном VPN: выбор запоминается и применяется
+	// при следующем включении
+	mode := m.mode
+	if mode == "" {
+		mode = m.info.Mode
+	}
+	b.line(base.Render(" Режим") + lipgloss.NewStyle().Background(t.Bg).Foreground(t.Muted).
+		Render("   (запоминается)"))
+	b.buttonsRow(2, []btnSpec{
+		{label: "Правила", id: "mode", data: "rule", active: mode == "rule"},
+		{label: "Глобально", id: "mode", data: "global", active: mode == "global"},
+		{label: "Напрямую", id: "mode", data: "direct", active: mode == "direct"},
+	})
+	b.blank()
 
 	// веб-панель: выбор + открытие
 	dashName := m.info.Dashboard
@@ -310,8 +381,12 @@ func (m model) renderDashPick(b *builder) {
 
 func (m model) renderAddSub(b *builder) {
 	t := m.th
+	muted := lipgloss.NewStyle().Background(t.Bg).Foreground(t.Muted)
 	b.line(b.base.Render(" Новая подписка — вставь ссылку:"))
-	b.line(lipgloss.NewStyle().Background(t.Bg).Foreground(t.Muted).Render(" (текст — экранная клавиатура Steam+X)"))
+	b.line(muted.Render(" (текст — экранная клавиатура Steam+X)"))
+	b.line(muted.Render(" Можно: ссылку на подписку Clash/Mihomo (https://…),"))
+	b.line(muted.Render(" base64-подписку v2ray или ссылку на сервер:"))
+	b.line(muted.Render(" vless:// vmess:// ss:// trojan:// hysteria2:// (hy2://)"))
 	b.blank()
 	field := lipgloss.NewStyle().Background(t.Panel).Foreground(t.Fg).
 		Width(innerW - 4).Padding(0, 1).Render(m.ti.View())

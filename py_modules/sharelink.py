@@ -366,6 +366,16 @@ def parse(text: str) -> Tuple[List[dict], str]:
     return proxies, name
 
 
+# Имена групп — те же, что force-proxy-group / force-auto-group в
+# defaults/override.yaml. Конфиг из share-ссылок сразу маршрутизирует MATCH в
+# GEEKCOM-VPN: это та же группа, которой управляет выбор ноды в плагине/TUI,
+# и в ней нет DIRECT (раньше была своя PROXY с DIRECT — и в режиме «Правила»
+# трафик мог молча уйти напрямую). Группы описаны здесь, а не только в
+# override, чтобы файл подписки проходил `mihomo -t` сам по себе.
+FORCE_GROUP = "GEEKCOM-VPN"
+AUTO_GROUP = "GEEKCOM-AUTO"
+
+
 def build_yaml(proxies: List[dict]) -> bytes:
     """Собрать валидный минимальный Clash-конфиг из списка нод."""
     names = [p["name"] for p in proxies]
@@ -375,21 +385,21 @@ def build_yaml(proxies: List[dict]) -> bytes:
         "proxies": proxies,
         "proxy-groups": [
             {
-                "name": "PROXY",
+                "name": FORCE_GROUP,
                 "type": "select",
-                "proxies": names + ["DIRECT"],
+                "proxies": [AUTO_GROUP] + names,
             },
             {
-                "name": "AUTO",
+                "name": AUTO_GROUP,
                 "type": "url-test",
                 "url": "http://www.gstatic.com/generate_204",
                 "interval": 300,
                 "lazy": True,
-                "proxies": names or ["DIRECT"],
+                "proxies": names,
             },
         ],
         "rules": [
-            "MATCH,PROXY",
+            f"MATCH,{FORCE_GROUP}",
         ],
     }
     buf = io.BytesIO()

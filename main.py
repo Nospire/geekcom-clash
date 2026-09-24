@@ -8,6 +8,8 @@ import subprocess
 from pathlib import Path
 import shutil
 from typing import Any, Dict, List, Optional, Tuple
+import urllib.error
+import urllib.parse
 import urllib.request
 
 import config
@@ -27,6 +29,9 @@ import utils
 # ссылаются правила), GEEKCOM-AUTO — пункт «Авто (быстрейшая)» внутри неё.
 FORCE_GROUP = "GEEKCOM-VPN"
 AUTO_NODE = "GEEKCOM-AUTO"
+# URL и таймаут проверки задержки (как у url-test групп в override.yaml).
+DELAY_TEST_URL = "http://www.gstatic.com/generate_204"
+DELAY_TEST_TIMEOUT_MS = 5000
 
 
 def _parse_version(v: str) -> Optional[Tuple[int, ...]]:
@@ -81,6 +86,7 @@ class Plugin:
         self._set_default("auto_update_subscription", False)
         self._set_default("skip_steam_download", False)
         self._set_default("current_node", None)  # None = «Авто (быстрейшая)»
+        self._set_default("mode", config.DEFAULT_MODE)  # rule | global | direct
         self._set_default("log_level", logging.getLevelName(logging.INFO))
 
         level = self._get("log_level")
@@ -170,6 +176,7 @@ class Plugin:
             str(dashboard.DASHBOARD_DIR),
             self._get("dashboard", True),
             self._get("skip_steam_download"),
+            self._get("mode"),
         )
 
     async def get_core_status(self) -> bool:
@@ -244,7 +251,8 @@ class Plugin:
         await self._apply_node_selection()
 
     # --- Выбор ноды (группа GEEKCOM-VPN) ------------------------------------
-    def _controller_request(self, method: str, path: str, body: Optional[dict] = None) -> dict:
+    def _controller_request(self, method: str, path: str, body: Optional[dict] = None,
+                            timeout: float = 3) -> dict:
         """Запрос к external-controller mihomo (localhost). Блокирующий —
         вызывать через run_in_executor из async-кода."""
         port = self._get("controller_port")
@@ -256,7 +264,7 @@ class Plugin:
             method=method,
             headers={"Authorization": f"Bearer {secret}", "Content-Type": "application/json"},
         )
-        with urllib.request.urlopen(req, timeout=3) as resp:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
             raw = resp.read()
             return json.loads(raw) if raw else {}
 
@@ -267,9 +275,18 @@ class Plugin:
         if self.core.is_running:
             try:
                 loop = asyncio.get_event_loop()
-                g = await loop.run_in_executor(
-                    None, lambda: self._controller_request("GET", f"/proxies/{FORCE_GROUP}"))
-                return {"members": g.get("all", []), "current": g.get("now", saved), "running": True}
+                px = (await loop.run_in_executor(
+                    None, lambda: self._controller_request("GET", "/proxies"))).get("proxies", {})
+                g = px.get(FORCE_GROUP, {})
+                members = g.get("all", [])
+                # Последний результат проверки задержки (url-test/ручной тест).
+                delays = {}
+                for name in members:
+                    history = (px.get(name) or {}).get("history") or []
+                    if history:
+                        delays[name] = history[-1].get("delay", 0)
+                return {"members": members, "current": g.get("now", saved),
+                        "running": True, "delays": delays}
             except Exception as e:
                 logger.debug(f"get_nodes: api failed {e}")
         members = [AUTO_NODE]
@@ -282,7 +299,63 @@ class Plugin:
                 members += [p.get("name") for p in (doc.get("proxies") or []) if p.get("name")]
             except Exception as e:
                 logger.debug(f"get_nodes: parse failed {e}")
-        return {"members": members, "current": saved, "running": False}
+        return {"members": members, "current": saved, "running": False, "delays": {}}
+
+    async def test_delays(self) -> Tuple[Dict[str, int], Optional[str]]:
+        """Проверка задержки всех нод GEEKCOM-VPN (кнопка «Проверить задержку»).
+        /group/{name}/delay — пакетная версия /proxies/{name}/delay: mihomo
+        параллельно делает URL-тест каждой ноды через неё саму. Ноды, не
+        ответившие за таймаут, в ответ не попадают (→ фронт покажет «таймаут»).
+        Работает только при запущенном ядре."""
+        if not self.core.is_running:
+            return {}, "core not running"
+        query = urllib.parse.urlencode({"url": DELAY_TEST_URL, "timeout": DELAY_TEST_TIMEOUT_MS})
+        path = f"/group/{urllib.parse.quote(FORCE_GROUP)}/delay?{query}"
+        loop = asyncio.get_event_loop()
+        try:
+            result = await loop.run_in_executor(None, lambda: self._controller_request(
+                "GET", path, timeout=DELAY_TEST_TIMEOUT_MS / 1000 + 3))
+        except urllib.error.HTTPError as e:
+            # 504 — ни одна нода не ответила за таймаут: это результат, а не сбой.
+            if e.code == 504:
+                return {}, None
+            logger.error(f"test_delays: api failed {e}")
+            return {}, str(e)
+        except Exception as e:
+            logger.error(f"test_delays: api failed {e}")
+            return {}, str(e)
+        return {k: int(v) for k, v in result.items() if isinstance(v, (int, float))}, None
+
+    # --- Режим маршрутизации (rule/global/direct) ---------------------------
+    async def get_mode(self) -> str:
+        self._reload_settings()
+        return config.normalize_mode(self._get("mode", True))
+
+    async def set_mode(self, mode: str) -> Tuple[bool, Optional[str]]:
+        """Сохранить режим в настройках (переживает выкл/вкл — ctl regen пишет
+        его в конфиг) и, если ядро запущено, применить сразу через API."""
+        if mode not in config.CLASH_MODES:
+            return False, f"invalid mode {mode}"
+        self._reload_settings()
+        self.settings.setSetting("mode", mode)
+        if not self.core.is_running:
+            return True, None
+        loop = asyncio.get_event_loop()
+        try:
+            await loop.run_in_executor(
+                None, lambda: self._controller_request("PATCH", "/configs", {"mode": mode}))
+        except Exception as e:
+            logger.error(f"set_mode: api failed {e}")
+            return False, str(e)
+        if mode == "global":
+            # GLOBAL и так описан с GEEKCOM-VPN первым (force-global-group), но
+            # в подписке может быть своя GLOBAL — направляем явно, best-effort.
+            try:
+                await loop.run_in_executor(None, lambda: self._controller_request(
+                    "PUT", "/proxies/GLOBAL", {"name": FORCE_GROUP}))
+            except Exception as e:
+                logger.warning(f"set_mode: GLOBAL -> {FORCE_GROUP} failed: {e}")
+        return True, None
 
     async def set_node(self, name: str) -> bool:
         """Зафиксировать ноду: сохранить в настройках (предвыбор) и, если ядро
@@ -330,6 +403,7 @@ class Plugin:
             "dashboard": self._get("dashboard", True),
             "controller_port": self._get("controller_port"),
             "skip_steam_download": self._get("skip_steam_download"),
+            "mode": self._get("mode", True) or "rule",
         }
         logger.debug(config)
         return config

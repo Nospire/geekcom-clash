@@ -16,9 +16,11 @@
 
 - 🇷🇺 Полностью на русском — плагин, десктопный TUI и страница импорта
 - 🌐 Системный VPN (TUN): игры, обновления SteamOS, Flathub, Decky — через туннель, даже когда их режут
-- 🔀 Три режима маршрутизации: **Rule** / **Global** / **Direct**
+- 🔀 Три режима маршрутизации: **Rule** / **Global** / **Direct** — выбор запоминается
+- 📥 Импорт: подписка Clash/Mihomo (http/https), base64-подписка v2ray, ссылки на сервер `vless://` `vmess://` `ss://` `trojan://` `hysteria2://`
+- ⏱️ Проверка задержки до серверов (в плагине и в TUI)
 - 📲 Импорт подписки с телефона (веб-страница по ссылке/QR)
-- 🛡️ DNS поверх DoH (Cloudflare / Google / Quad9) — устойчиво к DPI
+- 🛡️ DNS через туннель: DoH (1.1.1.1 / 8.8.8.8) идёт через VPN, мимо DPI; домен VPN-сервера и прямой трафик — через Яндекс DNS
 - 🖥️ Десктопный TUI: вкл/выкл, выбор сервера, тёмная/светлая темы — мышью/тачем
 - ⚡ Установка и обновление одной командой
 
@@ -77,6 +79,6 @@ pnpm build   # → dist/index.js
 
 Форк [chenx-dust/DeckyClash](https://github.com/chenx-dust/DeckyClash), допиленный под
 РФ/СНГ: русская локализация, принудительный роутинг системных сервисов через VPN,
-десктопный TUI, RU-DNS поверх DoH. Ядро — [MetaCubeX/mihomo](https://github.com/MetaCubeX/mihomo).
+десктопный TUI, DNS через туннель. Ядро — [MetaCubeX/mihomo](https://github.com/MetaCubeX/mihomo).
 
 Лицензия: **BSD-3-Clause** (см. [LICENSE](./LICENSE)).
