@@ -83,6 +83,18 @@ func addFromURL(url string, existing map[string]string) (Result, error) {
 		return Result{}, fmt.Errorf("read: %w", err)
 	}
 
+	// Некоторые провайдеры отдают НЕ clash-YAML, а base64-подписку v2ray (список
+	// vless://,vmess://,ss://,trojan://,hysteria2:// ). mihomo такой формат не
+	// понимает → "конфиг невалиден: … test failed". Детектим и конвертируем в
+	// clash-конфиг (декод base64 + разбор ссылок + BuildYAML).
+	if sharelink.LooksLikeSharelink(string(body)) {
+		if proxies, _ := sharelink.Parse(string(body)); len(proxies) > 0 {
+			if y, e := sharelink.BuildYAML(proxies); e == nil {
+				body = y
+			}
+		}
+	}
+
 	filename := filenameFromResp(resp, url)
 	filename = strings.TrimSuffix(filename, ".yml")
 	filename = strings.TrimSuffix(filename, ".yaml")
