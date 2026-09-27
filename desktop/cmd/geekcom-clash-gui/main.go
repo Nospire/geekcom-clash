@@ -130,9 +130,12 @@ func buildWelcome(w fyne.Window, onChanged func()) fyne.CanvasObject {
 
 func askLink(w fyne.Window, onChanged func()) {
 	entry := widget.NewMultiLineEntry()
-	entry.SetPlaceHolder("vless://…  или  https://…/sub")
+	entry.SetPlaceHolder("vless://…  /  vmess://…  /  ss://…  /  trojan://…  /  hysteria2://…  /  https://…/sub")
 	entry.SetMinRowsVisible(3)
-	d := dialog.NewCustomConfirm(tr("add_sub"), tr("add"), tr("cancel"), entry, func(ok bool) {
+	hint := widget.NewLabel(tr("formats"))
+	hint.Wrapping = fyne.TextWrapWord
+	content := container.NewVBox(entry, hint)
+	d := dialog.NewCustomConfirm(tr("add_sub"), tr("add"), tr("cancel"), content, func(ok bool) {
 		if !ok {
 			return
 		}
@@ -151,7 +154,7 @@ func askLink(w fyne.Window, onChanged func()) {
 			fyne.Do(onChanged)
 		}()
 	}, w)
-	d.Resize(fyne.NewSize(480, 240))
+	d.Resize(fyne.NewSize(520, 300))
 	d.Show()
 }
 
