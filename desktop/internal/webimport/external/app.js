@@ -2,6 +2,7 @@
 const translations = {
   'ru': {
     'import-tip': 'Импорт подписки Clash / Mihomo',
+    'formats': 'Поддерживаются: подписка http(s), ссылки vless / vmess / ss / trojan / hysteria2',
     'import-file-tip': 'Импорт файла',
     'sub-link': 'Ссылка подписки',
     'sel-lang': 'Язык:',
@@ -22,6 +23,7 @@ const translations = {
   },
   'en': {
     'import-tip': 'Clash / Mihomo Subscription Import',
+    'formats': 'Supported: http(s) subscription, or vless / vmess / ss / trojan / hysteria2 links',
     'import-file-tip': 'Import File',
     'sub-link': 'Subscription Link',
     'sel-lang': 'Language:',
@@ -42,6 +44,7 @@ const translations = {
   },
   'zh-CN': {
     'import-tip': '导入 Clash / Mihomo订阅',
+    'formats': '支持：http(s) 订阅，或 vless / vmess / ss / trojan / hysteria2 链接',
     'import-file-tip': '导入文件',
     'sub-link': '订阅链接',
     'sel-lang': '语言：',
@@ -98,6 +101,7 @@ function updatePageText() {
   document.getElementById('import-tip').textContent = t('import-tip');
   document.getElementById('import-file-tip').textContent = t('import-file-tip');
   document.getElementById('input-url').placeholder = t('sub-link');
+  document.getElementById('formats-hint').textContent = t('formats');
   document.getElementById('sel-lang').textContent = t('sel-lang');
   document.getElementById('language-select').value = currentLanguage;
 }
@@ -266,7 +270,11 @@ function onDownloadBtnClick(url) {
       Modal.close();
 
       if (response.status === 200) {
-        Modal.showSuccess(t('success'), t('success-msg'));
+        if (response.data && response.data.no_rules) {
+          Modal.showSuccess(t('success'), 'Подписка добавлена. У этого провайдера нет правил маршрутизации — весь трафик пойдёт через VPN (режим «Правила» работает как «Глобально»).');
+        } else {
+          Modal.showSuccess(t('success'), t('success-msg'));
+        }
       } else {
         const errorMsg = typeof response.data === 'object' && response.data.error
           ? response.data.error
@@ -320,7 +328,11 @@ function onUploadBtnClick(file) {
       Modal.close();
 
       if (response.status === 200) {
-        Modal.showSuccess(t('success'), t('success-msg'));
+        if (response.data && response.data.no_rules) {
+          Modal.showSuccess(t('success'), 'Подписка добавлена. У этого провайдера нет правил маршрутизации — весь трафик пойдёт через VPN (режим «Правила» работает как «Глобально»).');
+        } else {
+          Modal.showSuccess(t('success'), t('success-msg'));
+        }
       } else {
         const errorMsg = typeof response.data === 'object' && response.data.error
           ? response.data.error

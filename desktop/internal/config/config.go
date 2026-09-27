@@ -17,6 +17,7 @@ type Config struct {
 	Secret            string            `json:"secret"`
 	OverrideDNS       bool              `json:"override_dns"`
 	EnhancedMode      string            `json:"enhanced_mode"`
+	Mode              string            `json:"mode"` // маршрутизация: rule|global|direct (запоминается между запусками)
 	ControllerPort    int               `json:"controller_port"`
 	AllowRemoteAccess bool              `json:"allow_remote_access"`
 	Dashboard         string            `json:"dashboard"`
@@ -28,6 +29,7 @@ type Config struct {
 func Defaults() Config {
 	return Config{
 		EnhancedMode:   "fake-ip",
+		Mode:           "rule",
 		ControllerPort: 9090,
 		OverrideDNS:    true,
 		Subscriptions:  map[string]string{},

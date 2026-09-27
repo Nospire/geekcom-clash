@@ -117,7 +117,9 @@ class Plugin:
                 success, error = await self.download_subscription(link)
                 if not success:
                     raise RuntimeError(error)
-                return web.Response(status=http.HTTPStatus.OK)
+                # no_rules: у подписки нет правил маршрутизации (голый список нод) —
+                # телефонная страница покажет предупреждение (весь трафик через VPN).
+                return web.json_response({"ok": True, "no_rules": getattr(self, "_last_no_rules", False)})
             except ValueError as e:
                 logger.error(f"external_callback: value error {e}")
                 return web.json_response({"error": str(e)}, status=http.HTTPStatus.BAD_REQUEST)
@@ -418,6 +420,7 @@ class Plugin:
         PERMITTED_KEYS = [
             "override_dns",
             "enhanced_mode",
+            "mode",
             "allow_remote_access",
             "autostart",
             "dashboard",
@@ -604,6 +607,7 @@ class Plugin:
                 logger.error(f"download_subscription (engine): {e}")
                 return False, str(e)
             self._reload_settings()  # Go сам записал подписку в config.json
+            self._last_no_rules = bool(data.get("no_rules"))
             if data.get("ok"):
                 name = data["result"][0]
                 await decky.emit("sub_update", name)

@@ -94,6 +94,7 @@ func cmdRegen(args []string) error {
 		Secret:            c.Secret,
 		OverrideDNS:       c.OverrideDNS,
 		EnhancedMode:      c.EnhancedMode,
+		Mode:              c.Mode,
 		ControllerPort:    c.ControllerPort,
 		AllowRemoteAccess: c.AllowRemoteAccess,
 		Dashboard:         c.Dashboard,
@@ -125,7 +126,7 @@ func cmdAddSub(args []string) error {
 	if err := config.RegisterSub(res.Name, res.URL); err != nil {
 		return err
 	}
-	printJSON(map[string]any{"ok": true, "result": []string{res.Name, res.URL}})
+	printJSON(map[string]any{"ok": true, "result": []string{res.Name, res.URL}, "no_rules": res.NoRules})
 	return nil
 }
 

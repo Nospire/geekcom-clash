@@ -561,6 +561,9 @@ const Content: FC<{}> = ({ }) => {
               onChange={async (value) => {
                 const previousMode = clashMode;
                 setClashMode(value.data);
+                // Запоминаем режим между off→on/рестартами: движок пишет его в
+                // running_config при старте (regen читает config "mode").
+                backend.setConfigValue("mode", value.data);
                 try {
                   await patchClashMode(controllerPort, secret, value.data);
                   getClashMode(controllerPort, secret).then(setClashMode);

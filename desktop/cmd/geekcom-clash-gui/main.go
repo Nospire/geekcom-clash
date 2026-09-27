@@ -82,6 +82,19 @@ func main() {
 		}
 	}
 	show()
+	// Fyne-квирк: когда WM разворачивает окно на весь экран, первичная раскладка
+	// VScroll бывает устаревшей (прокрутка не активируется, пока не дёрнешь размер).
+	// Форсируем перелейаут вскоре после показа — по реальному размеру канвы.
+	go func() {
+		time.Sleep(600 * time.Millisecond)
+		fyne.Do(func() {
+			sz := w.Canvas().Size()
+			if sz.Width > 1 && sz.Height > 1 {
+				w.Resize(sz.Subtract(fyne.NewSize(0, 1)))
+				w.Resize(sz)
+			}
+		})
+	}()
 	w.ShowAndRun()
 }
 
@@ -117,9 +130,12 @@ func buildWelcome(w fyne.Window, onChanged func()) fyne.CanvasObject {
 
 func askLink(w fyne.Window, onChanged func()) {
 	entry := widget.NewMultiLineEntry()
-	entry.SetPlaceHolder("vless://…  или  https://…/sub")
+	entry.SetPlaceHolder("vless://…  /  vmess://…  /  ss://…  /  trojan://…  /  hysteria2://…  /  https://…/sub")
 	entry.SetMinRowsVisible(3)
-	d := dialog.NewCustomConfirm(tr("add_sub"), tr("add"), tr("cancel"), entry, func(ok bool) {
+	hint := widget.NewLabel(tr("formats"))
+	hint.Wrapping = fyne.TextWrapWord
+	content := container.NewVBox(entry, hint)
+	d := dialog.NewCustomConfirm(tr("add_sub"), tr("add"), tr("cancel"), content, func(ok bool) {
 		if !ok {
 			return
 		}
@@ -138,7 +154,7 @@ func askLink(w fyne.Window, onChanged func()) {
 			fyne.Do(onChanged)
 		}()
 	}, w)
-	d.Resize(fyne.NewSize(480, 240))
+	d.Resize(fyne.NewSize(520, 300))
 	d.Show()
 }
 
@@ -149,20 +165,26 @@ func phoneImport(w fyne.Window, after func()) {
 		return
 	}
 	var qrObj fyne.CanvasObject = newText("", cMuted, 13, false)
-	if png, e := qrcode.Encode(link, qrcode.Medium, 240); e == nil {
+	if png, e := qrcode.Encode(link, qrcode.Medium, 200); e == nil {
 		img := canvas.NewImageFromResource(fyne.NewStaticResource("qr.png", png))
 		img.FillMode = canvas.ImageFillContain
-		qrObj = container.NewGridWrap(fyne.NewSize(220, 220), img)
+		qrObj = container.NewGridWrap(fyne.NewSize(180, 180), img)
 	}
+	var d dialog.Dialog
+	// Явная кнопка «Закрыть» ВНУТРИ тела: даже если на весь экран Fyne спозиционирует
+	// диалог низко и штатная кнопка уйдёт под экран — эту видно (тело прокручивается).
+	closeBtn := widget.NewButton(tr("close"), func() { d.Hide() })
+	closeBtn.Importance = widget.HighImportance
 	body := container.NewVBox(
 		newText(tr("scan_or_open"), cMuted, 13, false),
 		container.NewCenter(qrObj),
 		container.NewCenter(newText(link, cInfo, 16, true)),
 		newText(tr("paste_there"), cMuted, 13, false),
+		container.NewCenter(closeBtn),
 	)
-	d := dialog.NewCustom(tr("phone_import"), tr("close"), body, w)
+	d = dialog.NewCustom(tr("phone_import"), tr("close"), container.NewVScroll(body), w)
 	d.SetOnClosed(func() { stop() })
-	d.Resize(fyne.NewSize(430, 430))
+	d.Resize(fyne.NewSize(360, 440))
 	d.Show()
 }
 
@@ -413,7 +435,10 @@ func buildMain(w fyne.Window, onChanged func()) (fyne.CanvasObject, func(), func
 		}()
 	}
 
-	setMode := func(m string) { go func() { api.SetMode(m); fyne.Do(refresh) }() }
+	// Сохраняем режим в настройки (запоминается между off→on/рестартами: regen
+	// пишет его в running_config) И применяем вживую. При выключенном VPN api.SetMode
+	// не сработает — но config.Set сохранит, и режим применится при следующем старте.
+	setMode := func(m string) { go func() { config.Set("mode", m); api.SetMode(m); fyne.Do(refresh) }() }
 	segRule.OnTap = func() { setMode("rule") }
 	segGlobal.OnTap = func() { setMode("global") }
 	segDirect.OnTap = func() { setMode("direct") }
@@ -493,7 +518,9 @@ func buildMain(w fyne.Window, onChanged func()) (fyne.CanvasObject, func(), func
 		container.NewVScroll(serverList))
 	right := container.NewStack(roundRect(cRail), container.NewPadded(rightInner))
 
-	split := container.NewHSplit(container.NewPadded(left), container.NewPadded(right))
+	// Левую колонку (подписки + «+ Добавить») оборачиваем в VScroll: при большом
+	// числе подписок список и кнопка добавления больше не уезжают за низ экрана.
+	split := container.NewHSplit(container.NewPadded(container.NewVScroll(left)), container.NewPadded(right))
 	split.Offset = 0.56
 
 	logo := canvas.NewImageFromResource(logoRes)

@@ -4,7 +4,9 @@
 package subscription
 
 import (
+	"bytes"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -24,8 +26,9 @@ import (
 
 // Result — итог добавления подписки.
 type Result struct {
-	Name string
-	URL  string // "local://<name>" для share-ссылок, исходный URL для http
+	Name    string
+	URL     string // "local://<name>" для share-ссылок, исходный URL для http
+	NoRules bool   // у подписки нет правил маршрутизации (голый список нод) → весь трафик через VPN
 }
 
 // Add добавляет подписку (share-ссылка/base64 или http-URL).
@@ -60,7 +63,19 @@ func addFromSharelink(input string, existing map[string]string) (Result, error) 
 		os.Remove(p)
 		return Result{}, fmt.Errorf("конфиг невалиден: %w", err)
 	}
-	return Result{Name: name, URL: "local://" + name}, nil
+	// share-ссылки — это голый список нод без правил → весь трафик через VPN.
+	return Result{Name: name, URL: "local://" + name, NoRules: true}, nil
+}
+
+// hasRoutingRules — есть ли в конфиге настоящие правила маршрутизации (не только
+// финальный MATCH). Голый список нод (share/base64) даёт лишь MATCH,GEEKCOM-VPN.
+func hasRoutingRules(body []byte) bool {
+	for _, kw := range []string{"RULE-SET,", "GEOIP,", "GEOSITE,", "DOMAIN,", "DOMAIN-SUFFIX,", "DOMAIN-KEYWORD,", "IP-CIDR,", "IP-CIDR6,", "PROCESS-NAME,", "SRC-IP-CIDR,"} {
+		if bytes.Contains(body, []byte(kw)) {
+			return true
+		}
+	}
+	return false
 }
 
 func addFromURL(url string, existing map[string]string) (Result, error) {
@@ -68,7 +83,7 @@ func addFromURL(url string, existing map[string]string) (Result, error) {
 	if err != nil {
 		return Result{}, fmt.Errorf("bad url: %w", err)
 	}
-	req.Header.Set("User-Agent", userAgent())
+	setSubHeaders(req)
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -81,6 +96,20 @@ func addFromURL(url string, existing map[string]string) (Result, error) {
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return Result{}, fmt.Errorf("read: %w", err)
+	}
+
+	// Некоторые провайдеры отдают НЕ clash-YAML, а base64-подписку v2ray (список
+	// vless://,vmess://,ss://,trojan://,hysteria2:// ). mihomo такой формат не
+	// понимает → "конфиг невалиден: … test failed". Детектим и конвертируем в
+	// clash-конфиг (декод base64 + разбор ссылок + BuildYAML).
+	converted := false
+	if sharelink.LooksLikeSharelink(string(body)) {
+		if proxies, _ := sharelink.Parse(string(body)); len(proxies) > 0 {
+			if y, e := sharelink.BuildYAML(proxies); e == nil {
+				body = y
+				converted = true
+			}
+		}
 	}
 
 	filename := filenameFromResp(resp, url)
@@ -102,7 +131,10 @@ func addFromURL(url string, existing map[string]string) (Result, error) {
 		os.Remove(p)
 		return Result{}, fmt.Errorf("конфиг невалиден: %w", err)
 	}
-	return Result{Name: filename, URL: url}, nil
+	// Нет правил маршрутизации, если сконвертировали из голого списка нод ИЛИ в
+	// clash-конфиге провайдера нет ни одного правила (только финальный MATCH).
+	noRules := converted || !hasRoutingRules(body)
+	return Result{Name: filename, URL: url, NoRules: noRules}, nil
 }
 
 // validate — mihomo -t. Бинарь и resource-dir берём из env (плагин их знает).
@@ -149,6 +181,43 @@ func filenameFromResp(resp *http.Response, url string) string {
 		url = url[:i]
 	}
 	return path.Base(url)
+}
+
+// deviceHWID — стабильный идентификатор устройства для HWID-лимита Remnawave.
+// sha256("geekcom-clash:"+machine-id): одинаков для Go и Python (тот же machine-id),
+// стабилен между запусками. Fallback — персистентный uuid в data-каталоге.
+func deviceHWID() string {
+	for _, p := range []string{"/etc/machine-id", "/var/lib/dbus/machine-id"} {
+		if b, err := os.ReadFile(p); err == nil {
+			if id := strings.TrimSpace(string(b)); id != "" {
+				sum := sha256.Sum256([]byte("geekcom-clash:" + id))
+				return hex.EncodeToString(sum[:])
+			}
+		}
+	}
+	hp := filepath.Join(paths.DataDir(), ".hwid")
+	if b, err := os.ReadFile(hp); err == nil {
+		if id := strings.TrimSpace(string(b)); id != "" {
+			return id
+		}
+	}
+	buf := make([]byte, 16)
+	rand.Read(buf)
+	id := hex.EncodeToString(buf)
+	_ = os.MkdirAll(paths.DataDir(), 0o755)
+	_ = os.WriteFile(hp, []byte(id), 0o644)
+	return id
+}
+
+// setSubHeaders — заголовки запроса подписки: clash-UA + HWID-набор Remnawave.
+// Заголовки безвредны, если у провайдера HWID-лимит выключен. Провайдер считает
+// устройства по x-hwid.
+func setSubHeaders(req *http.Request) {
+	req.Header.Set("User-Agent", userAgent())
+	req.Header.Set("x-hwid", deviceHWID())
+	req.Header.Set("x-device-os", "SteamOS")
+	req.Header.Set("x-ver-os", "3.0")
+	req.Header.Set("x-device-model", "Steam Deck")
 }
 
 func userAgent() string {

@@ -1,6 +1,7 @@
 import asyncio
 import email
 import email.message
+import hashlib
 import shutil
 from typing import Dict, Optional, Tuple
 import os
@@ -30,6 +31,30 @@ def _user_agent(user_agent_override: Optional[str] = None) -> str:
            f"clash.meta/{core.LAST_CORE_VERSION} " \
             "clash-verge/2.5.0 mihomo.party/v1.9.5 FlClash/v0.8.93 " \
            f"{metadata.PACKAGE_NAME}/{decky.DECKY_PLUGIN_VERSION}"
+
+def _device_hwid() -> str:
+    # Стабильный HWID для лимита устройств Remnawave. sha256("geekcom-clash:"+machine-id)
+    # — совпадает с Go-движком (тот же machine-id), стабилен между запусками.
+    for p in ("/etc/machine-id", "/var/lib/dbus/machine-id"):
+        try:
+            with open(p) as f:
+                mid = f.read().strip()
+            if mid:
+                return hashlib.sha256(("geekcom-clash:" + mid).encode()).hexdigest()
+        except OSError:
+            pass
+    return ""
+
+def _sub_headers(ua: str) -> Dict[str, str]:
+    # clash-UA + HWID-набор Remnawave. Заголовки безвредны, если HWID-лимит выключен.
+    headers = {"User-Agent": ua}
+    hwid = _device_hwid()
+    if hwid:
+        headers["x-hwid"] = hwid
+        headers["x-device-os"] = "SteamOS"
+        headers["x-ver-os"] = "3.0"
+        headers["x-device-model"] = "Steam Deck"
+    return headers
 
 def _deduplicate_name(now_subs: SubscriptionDict, filename: str) -> Optional[str]:
     def check_exist(name) -> bool:
@@ -120,7 +145,7 @@ def download_sub(
 
     try:
         ua = _user_agent(user_agent)
-        req = urllib.request.Request(url, headers={"User-Agent": ua})
+        req = urllib.request.Request(url, headers=_sub_headers(ua))
         logger.debug(f"download_sub: request headers: {req.header_items()}")
         resp: http.client.HTTPResponse = urllib.request.urlopen(
             req, timeout=timeout, context=utils.get_ssl_context())
@@ -235,7 +260,7 @@ def import_sub(file_name: str, data: bytes, now_subs: SubscriptionDict) -> Tuple
 async def update_sub(name: str, url: str, timeout: float, user_agent: Optional[str] = None) -> Optional[str]:
     try:
         ua = _user_agent(user_agent)
-        req = urllib.request.Request(url, headers={'User-Agent': ua})
+        req = urllib.request.Request(url, headers=_sub_headers(ua))
         logger.debug(f"update_sub: request headers: {req.header_items()}")
         await utils.get_url_to_file(req, get_path(name), timeout)
     except Exception as e:
