@@ -6,6 +6,7 @@ package subscription
 import (
 	"bytes"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -82,7 +83,7 @@ func addFromURL(url string, existing map[string]string) (Result, error) {
 	if err != nil {
 		return Result{}, fmt.Errorf("bad url: %w", err)
 	}
-	req.Header.Set("User-Agent", userAgent())
+	setSubHeaders(req)
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -180,6 +181,43 @@ func filenameFromResp(resp *http.Response, url string) string {
 		url = url[:i]
 	}
 	return path.Base(url)
+}
+
+// deviceHWID — стабильный идентификатор устройства для HWID-лимита Remnawave.
+// sha256("geekcom-clash:"+machine-id): одинаков для Go и Python (тот же machine-id),
+// стабилен между запусками. Fallback — персистентный uuid в data-каталоге.
+func deviceHWID() string {
+	for _, p := range []string{"/etc/machine-id", "/var/lib/dbus/machine-id"} {
+		if b, err := os.ReadFile(p); err == nil {
+			if id := strings.TrimSpace(string(b)); id != "" {
+				sum := sha256.Sum256([]byte("geekcom-clash:" + id))
+				return hex.EncodeToString(sum[:])
+			}
+		}
+	}
+	hp := filepath.Join(paths.DataDir(), ".hwid")
+	if b, err := os.ReadFile(hp); err == nil {
+		if id := strings.TrimSpace(string(b)); id != "" {
+			return id
+		}
+	}
+	buf := make([]byte, 16)
+	rand.Read(buf)
+	id := hex.EncodeToString(buf)
+	_ = os.MkdirAll(paths.DataDir(), 0o755)
+	_ = os.WriteFile(hp, []byte(id), 0o644)
+	return id
+}
+
+// setSubHeaders — заголовки запроса подписки: clash-UA + HWID-набор Remnawave.
+// Заголовки безвредны, если у провайдера HWID-лимит выключен. Провайдер считает
+// устройства по x-hwid.
+func setSubHeaders(req *http.Request) {
+	req.Header.Set("User-Agent", userAgent())
+	req.Header.Set("x-hwid", deviceHWID())
+	req.Header.Set("x-device-os", "SteamOS")
+	req.Header.Set("x-ver-os", "3.0")
+	req.Header.Set("x-device-model", "Steam Deck")
 }
 
 func userAgent() string {
