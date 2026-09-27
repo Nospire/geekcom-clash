@@ -413,7 +413,10 @@ func buildMain(w fyne.Window, onChanged func()) (fyne.CanvasObject, func(), func
 		}()
 	}
 
-	setMode := func(m string) { go func() { api.SetMode(m); fyne.Do(refresh) }() }
+	// Сохраняем режим в настройки (запоминается между off→on/рестартами: regen
+	// пишет его в running_config) И применяем вживую. При выключенном VPN api.SetMode
+	// не сработает — но config.Set сохранит, и режим применится при следующем старте.
+	setMode := func(m string) { go func() { config.Set("mode", m); api.SetMode(m); fyne.Do(refresh) }() }
 	segRule.OnTap = func() { setMode("rule") }
 	segGlobal.OnTap = func() { setMode("global") }
 	segDirect.OnTap = func() { setMode("direct") }

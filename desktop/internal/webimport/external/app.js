@@ -266,7 +266,11 @@ function onDownloadBtnClick(url) {
       Modal.close();
 
       if (response.status === 200) {
-        Modal.showSuccess(t('success'), t('success-msg'));
+        if (response.data && response.data.no_rules) {
+          Modal.showSuccess(t('success'), 'Подписка добавлена. У этого провайдера нет правил маршрутизации — весь трафик пойдёт через VPN (режим «Правила» работает как «Глобально»).');
+        } else {
+          Modal.showSuccess(t('success'), t('success-msg'));
+        }
       } else {
         const errorMsg = typeof response.data === 'object' && response.data.error
           ? response.data.error
@@ -320,7 +324,11 @@ function onUploadBtnClick(file) {
       Modal.close();
 
       if (response.status === 200) {
-        Modal.showSuccess(t('success'), t('success-msg'));
+        if (response.data && response.data.no_rules) {
+          Modal.showSuccess(t('success'), 'Подписка добавлена. У этого провайдера нет правил маршрутизации — весь трафик пойдёт через VPN (режим «Правила» работает как «Глобально»).');
+        } else {
+          Modal.showSuccess(t('success'), t('success-msg'));
+        }
       } else {
         const errorMsg = typeof response.data === 'object' && response.data.error
           ? response.data.error

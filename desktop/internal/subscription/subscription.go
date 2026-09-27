@@ -4,6 +4,7 @@
 package subscription
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
@@ -24,8 +25,9 @@ import (
 
 // Result — итог добавления подписки.
 type Result struct {
-	Name string
-	URL  string // "local://<name>" для share-ссылок, исходный URL для http
+	Name    string
+	URL     string // "local://<name>" для share-ссылок, исходный URL для http
+	NoRules bool   // у подписки нет правил маршрутизации (голый список нод) → весь трафик через VPN
 }
 
 // Add добавляет подписку (share-ссылка/base64 или http-URL).
@@ -60,7 +62,19 @@ func addFromSharelink(input string, existing map[string]string) (Result, error) 
 		os.Remove(p)
 		return Result{}, fmt.Errorf("конфиг невалиден: %w", err)
 	}
-	return Result{Name: name, URL: "local://" + name}, nil
+	// share-ссылки — это голый список нод без правил → весь трафик через VPN.
+	return Result{Name: name, URL: "local://" + name, NoRules: true}, nil
+}
+
+// hasRoutingRules — есть ли в конфиге настоящие правила маршрутизации (не только
+// финальный MATCH). Голый список нод (share/base64) даёт лишь MATCH,GEEKCOM-VPN.
+func hasRoutingRules(body []byte) bool {
+	for _, kw := range []string{"RULE-SET,", "GEOIP,", "GEOSITE,", "DOMAIN,", "DOMAIN-SUFFIX,", "DOMAIN-KEYWORD,", "IP-CIDR,", "IP-CIDR6,", "PROCESS-NAME,", "SRC-IP-CIDR,"} {
+		if bytes.Contains(body, []byte(kw)) {
+			return true
+		}
+	}
+	return false
 }
 
 func addFromURL(url string, existing map[string]string) (Result, error) {
@@ -87,10 +101,12 @@ func addFromURL(url string, existing map[string]string) (Result, error) {
 	// vless://,vmess://,ss://,trojan://,hysteria2:// ). mihomo такой формат не
 	// понимает → "конфиг невалиден: … test failed". Детектим и конвертируем в
 	// clash-конфиг (декод base64 + разбор ссылок + BuildYAML).
+	converted := false
 	if sharelink.LooksLikeSharelink(string(body)) {
 		if proxies, _ := sharelink.Parse(string(body)); len(proxies) > 0 {
 			if y, e := sharelink.BuildYAML(proxies); e == nil {
 				body = y
+				converted = true
 			}
 		}
 	}
@@ -114,7 +130,10 @@ func addFromURL(url string, existing map[string]string) (Result, error) {
 		os.Remove(p)
 		return Result{}, fmt.Errorf("конфиг невалиден: %w", err)
 	}
-	return Result{Name: filename, URL: url}, nil
+	// Нет правил маршрутизации, если сконвертировали из голого списка нод ИЛИ в
+	// clash-конфиге провайдера нет ни одного правила (только финальный MATCH).
+	noRules := converted || !hasRoutingRules(body)
+	return Result{Name: filename, URL: url, NoRules: noRules}, nil
 }
 
 // validate — mihomo -t. Бинарь и resource-dir берём из env (плагин их знает).

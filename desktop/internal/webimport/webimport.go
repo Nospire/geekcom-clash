@@ -85,7 +85,7 @@ func Start(onAdded func(name string)) (url string, stop func(), err error) {
 		if onAdded != nil {
 			onAdded(res.Name)
 		}
-		fmt.Fprint(w, `{"ok":true}`)
+		fmt.Fprintf(w, `{"ok":true,"no_rules":%t}`, res.NoRules)
 	})
 	mux.HandleFunc("/upload_sub", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

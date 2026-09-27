@@ -22,6 +22,7 @@ type Opts struct {
 	Secret            string
 	OverrideDNS       bool
 	EnhancedMode      string // "fake-ip" | "redir-host"
+	Mode              string // "rule" | "global" | "direct" — запоминаемый режим маршрутизации
 	ControllerPort    int
 	AllowRemoteAccess bool
 	DashboardDir      string
@@ -35,6 +36,11 @@ func GenerateConfig(o Opts) error {
 		return fmt.Errorf("load subscription config: %w", err)
 	}
 	migrateLegacySharelink(cfg)
+	// Запоминаемый режим маршрутизации: перебиваем mode из подписки выбранным
+	// пользователем (иначе после рестарта возвращался бы mode подписки — обычно rule).
+	if o.Mode != "" {
+		cfg["mode"] = o.Mode
+	}
 	var ov map[string]any
 	if err := yaml.Unmarshal(overrideYAML, &ov); err != nil {
 		return fmt.Errorf("parse override.yaml: %w", err)
